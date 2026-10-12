@@ -1,0 +1,225 @@
+import Foundation
+
+@MainActor
+final class MeetingStore: ObservableObject {
+    @Published private(set) var meetings: [Meeting] = []
+
+    private static var documents: URL {
+        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+    }
+    private static var indexURL: URL { documents.appendingPathComponent("meetings.json") }
+
+    nonisolated static func audioURL(for fileName: String) -> URL {
+        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Audio").appendingPathComponent(fileName)
+    }
+
+    init() {
+        load()
+        // A run that was interrupted (app killed mid-processing) can be retried from the detail screen.
+        for i in meetings.indices where meetings[i].isBusy {
+            meetings[i].status = .failed
+            meetings[i].errorMessage = "Processing was interrupted."
+        }
+        save()
+    }
+
+    func meeting(_ id: UUID) -> Meeting? { meetings.first { $0.id == id } }
+
+    func add(fileName: String, duration: TimeInterval, date: Date = Date()) -> UUID {
+        let title = "Meeting " + date.formatted(date: .abbreviated, time: .shortened)
+        let meeting = Meeting(title: title, date: date, duration: duration, audioFile: fileName)
+        meetings.insert(meeting, at: 0)
+        save()
+        return meeting.id
+    }
+
+    /// Changes a meeting. Disk writes happen at once unless `immediate` is false (used while typing).
+    func update(_ id: UUID, immediate: Bool = true, _ change: (inout Meeting) -> Void) {
+        guard let i = meetings.firstIndex(where: { $0.id == id }) else { return }
+        change(&meetings[i])
+        if immediate { save() } else { scheduleSave() }
+    }
+
+    func addUsage(_ id: UUID, _ entry: TokenUsage) {
+        update(id) { $0.usage = ($0.usage ?? []) + [entry] }
+    }
+
+    /// Applies a typed change to the notes. These are the words that get emailed and put in the Word file.
+    func updateNotes(_ id: UUID, edited: Bool = true, _ change: (inout MeetingNotes) -> Void) {
+        update(id, immediate: false) { m in
+            guard var notes = m.notes else { return }
+            change(&notes)
+            m.notes = notes
+            if edited { m.notesEdited = true }
+        }
+    }
+
+    /// Writes any pending changes to disk now (for example when the app goes to the background).
+    func flush() {
+        saveTask?.cancel()
+        saveTask = nil
+        save()
+    }
+
+    func delete(_ id: UUID) {
+        guard let m = meeting(id) else { return }
+        try? FileManager.default.removeItem(at: Self.audioURL(for: m.audioFile))
+        meetings.removeAll { $0.id == id }
+        save()
+    }
+
+    /// The saved people, used to suggest names for voices.
+    weak var people: PeopleStore?
+
+    /// Transcribes and separates voices (unless a transcript already exists), then drafts the notes.
+    func process(_ id: UUID, regenerateTranscript: Bool = false, voiceCount: Int? = nil) async {
+        guard let m = meeting(id), !m.isBusy else { return }
+
+        if (m.transcript ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || regenerateTranscript {
+            update(id) { $0.status = .transcribing; $0.errorMessage = nil }
+            let fileURL = Self.audioURL(for: m.audioFile)
+            let transcription: TranscriptionResult
+            do {
+                transcription = try await Transcriber.transcribe(fileURL: fileURL)
+            } catch {
+                update(id) { $0.status = .failed; $0.errorMessage = error.localizedDescription }
+                return
+            }
+            update(id) {
+                $0.transcript = transcription.text
+                $0.lines = nil
+                $0.timeline = TranscriptBuilder.chunks(words: transcription.words)
+                $0.voices = nil
+                $0.speakersConfirmed = nil
+                $0.voiceNote = nil
+                if !transcription.gaps.isEmpty {
+                    let spans = transcription.gaps.prefix(3)
+                        .map { "\(formatDuration($0.start)) to \(formatDuration($0.end))" }.joined(separator: ", ")
+                    $0.voiceNote = "Some speech may be missing from the transcript (around \(spans)). Tap \u{22EF} > Re-transcribe and find voices to try again."
+                }
+            }
+
+            // Almost nothing recognized: say so instead of asking Claude to write notes from nothing.
+            let spoken = transcription.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            if m.duration >= 20 && spoken.count < 15 {
+                update(id) {
+                    $0.status = .failed
+                    $0.errorMessage = "Almost no speech was recognized (\(transcription.words.count) words in a \(formatDuration(m.duration)) recording). The audio may have been too quiet or too far from the phone, or speech recognition stopped early. Tap Try again to read it a second time."
+                }
+                return
+            }
+
+            // Telling voices apart is a bonus: if it fails, the notes still get written.
+            if !transcription.words.isEmpty {
+                update(id) { $0.status = .diarizing }
+                do {
+                    let found = try await SpeakerDiarizer.run(fileURL: fileURL, speakers: voiceCount)
+                    let suggest: ([Float]) -> Person? = { [weak self] embedding in self?.people?.suggest(for: embedding) }
+                    let built = TranscriptBuilder.build(words: transcription.words, diarization: found, suggest: suggest)
+                    update(id) {
+                        if built.voices.count > 1 {
+                            $0.lines = built.lines
+                            $0.voices = built.voices
+                        }
+                    }
+                } catch {
+                    update(id) {
+                        let why = "Voices could not be told apart: \(error.localizedDescription)"
+                        $0.voiceNote = [$0.voiceNote, why].compactMap { $0 }.joined(separator: " ")
+                    }
+                }
+            }
+        }
+
+        guard let current = meeting(id) else { return }
+        update(id) { $0.status = .generating; $0.errorMessage = nil }
+        do {
+            let result = try await NotesGenerator.generate(
+                transcript: current.timedTranscript,
+                meetingDate: current.date,
+                attendees: current.attendeeNames ?? [],
+                voicesIdentified: current.hasVoices && (current.speakersConfirmed ?? false))
+            update(id) {
+                var notes = result.notes
+                let hadNotes = $0.usage?.contains { $0.kind == .draft || $0.kind == .redraft } ?? false
+                $0.usage = ($0.usage ?? []) + [TokenUsage(kind: hadNotes ? .redraft : .draft,
+                                                          model: NotesGenerator.model, json: result.usage)]
+                Self.carryOverTicks(from: $0.notes, into: &notes)
+                if !$0.titleEdited { $0.title = result.title }
+                $0.notes = notes
+                $0.notesEdited = nil
+                $0.status = .done
+            }
+        } catch {
+            update(id) { $0.status = .failed; $0.errorMessage = error.localizedDescription }
+        }
+    }
+
+    /// Saves who is who, remembers the voices, and redrafts the notes with real names.
+    func applyIdentification(_ id: UUID, assignments: [String: Person], attendeeNames: [String],
+                             people: PeopleStore) async {
+        update(id) { m in
+            m.attendeeNames = attendeeNames
+            if var voices = m.voices {
+                for i in voices.indices {
+                    if let person = assignments[voices[i].id] {
+                        voices[i].personID = person.id
+                        voices[i].name = person.name
+                    } else {
+                        voices[i].personID = nil
+                        voices[i].name = nil
+                    }
+                }
+                m.voices = voices
+            }
+            m.speakersConfirmed = true
+        }
+        if let voices = meeting(id)?.voices {
+            for voice in voices {
+                if let person = assignments[voice.id] { people.remember(embedding: voice.embedding, for: person.id) }
+            }
+        }
+        await process(id)
+    }
+
+    /// Keeps action items you already ticked when the notes are redrafted, even if the wording shifted a little.
+    private static func carryOverTicks(from old: MeetingNotes?, into new: inout MeetingNotes) {
+        guard let old else { return }
+        func words(_ s: String) -> Set<String> {
+            Set(s.lowercased().split { !$0.isLetter && !$0.isNumber }.map(String.init))
+        }
+        let done = old.actionItems.filter(\.done).map { words($0.task) }
+        guard !done.isEmpty else { return }
+        for i in new.actionItems.indices {
+            let w = words(new.actionItems[i].task)
+            if done.contains(where: { d in
+                let overlap = Double(d.intersection(w).count)
+                let total = Double(d.union(w).count)
+                return total > 0 && overlap / total >= 0.5
+            }) { new.actionItems[i].done = true }
+        }
+    }
+
+    private func load() {
+        guard let data = try? Data(contentsOf: Self.indexURL),
+              let decoded = try? JSONDecoder().decode([Meeting].self, from: data) else { return }
+        meetings = decoded
+    }
+
+    private var saveTask: Task<Void, Never>?
+
+    private func scheduleSave() {
+        saveTask?.cancel()
+        saveTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 600_000_000)
+            if Task.isCancelled { return }
+            self?.save()
+        }
+    }
+
+    private func save() {
+        guard let data = try? JSONEncoder().encode(meetings) else { return }
+        try? data.write(to: Self.indexURL, options: .atomic)
+    }
+}

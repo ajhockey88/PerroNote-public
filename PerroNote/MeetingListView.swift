@@ -1,0 +1,380 @@
+import SwiftUI
+
+struct MeetingListView: View {
+    @EnvironmentObject private var store: MeetingStore
+    @State private var showRecorder = false
+    @State private var showSettings = false
+    @State private var showDatePicker = false
+    @State private var query = ""
+    @State private var filter: DateFilter = .all
+    @FocusState private var searchFocused: Bool
+
+    private var openActionItems: Int {
+        store.meetings.reduce(0) { $0 + ($1.notes?.actionItems.filter { !$0.done && !$0.task.isEmpty }.count ?? 0) }
+    }
+
+    private var visible: [Meeting] {
+        store.meetings.filter { filter.contains($0.date) && $0.matches(query) }
+    }
+
+    private var todayCount: Int { store.meetings.filter { Calendar.current.isDateInToday($0.date) }.count }
+
+    /// Visible meetings split by calendar day, newest first.
+    private var groups: [(day: Date, meetings: [Meeting])] {
+        let cal = Calendar.current
+        let byDay = Dictionary(grouping: visible) { cal.startOfDay(for: $0.date) }
+        return byDay.keys.sorted(by: >).map { day in
+            (day, byDay[day]!.sorted { $0.date > $1.date })
+        }
+    }
+
+    private func dayTitle(_ day: Date) -> String {
+        let cal = Calendar.current
+        if cal.isDateInToday(day) { return "Today" }
+        if cal.isDateInYesterday(day) { return "Yesterday" }
+        return day.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())
+    }
+
+    private var subtitle: String {
+        if !query.isEmpty {
+            return "\(visible.count) match\(visible.count == 1 ? "" : "es") for \u{201C}\(query)\u{201D}"
+        }
+        if store.meetings.isEmpty { return "Nothing recorded yet" }
+        return "\(todayCount) today \u{00B7} \(openActionItems) open item\(openActionItems == 1 ? "" : "s")"
+    }
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                header
+                if !store.meetings.isEmpty {
+                    searchBar
+                    filterChips
+                }
+                content
+            }
+            .background(Color(.systemGroupedBackground))
+            .navigationDestination(for: UUID.self) { MeetingDetailView(id: $0) }
+            .navigationDestination(for: ActionItemsRoute.self) { _ in ActionItemsView() }
+            .toolbar(.hidden, for: .navigationBar)
+            .overlay(alignment: .bottom) {
+                Button { showRecorder = true } label: {
+                    Label("Record", systemImage: "mic.fill")
+                        .font(.headline)
+                        .padding(.horizontal, 34)
+                        .padding(.vertical, 14)
+                        .foregroundStyle(.white)
+                        .background(Color(red: 0.90, green: 0.28, blue: 0.24), in: Capsule())
+                        .shadow(color: Color(red: 0.90, green: 0.28, blue: 0.24).opacity(0.45), radius: 10, y: 5)
+                }
+                .padding(.bottom, 10)
+                .padding(.top, 30)
+                .frame(maxWidth: .infinity)
+                .background(
+                    LinearGradient(colors: [Color(.systemGroupedBackground).opacity(0), Color(.systemGroupedBackground)],
+                                   startPoint: .top, endPoint: .center)
+                        .allowsHitTesting(false))
+            }
+        }
+        .fullScreenCover(isPresented: $showRecorder) { RecordingView() }
+        .sheet(isPresented: $showSettings) { SettingsView() }
+        .sheet(isPresented: $showDatePicker) { DateFilterSheet(filter: $filter) }
+    }
+
+    private var header: some View {
+        HStack(spacing: 10) {
+            Image("BrandIcon")
+                .resizable()
+                .frame(width: 44, height: 44)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("PerroNote")
+                    .font(.custom(CassetteView.markerFont, size: 28))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 8)
+            HStack(spacing: 16) {
+                NavigationLink(value: ActionItemsRoute()) {
+                    Image(systemName: "checklist")
+                        .overlay(alignment: .topTrailing) {
+                            if openActionItems > 0 {
+                                Text("\(min(openActionItems, 99))")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 4)
+                                    .background(Color.red, in: Capsule())
+                                    .offset(x: 9, y: -7)
+                            }
+                        }
+                }
+                .accessibilityLabel("Action items")
+
+                Button { showSettings = true } label: { Image(systemName: "gearshape") }
+                    .accessibilityLabel("Settings")
+            }
+            .font(.title3)
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 8)
+        .padding(.bottom, 8)
+    }
+
+    private var searchBar: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+            TextField("Search meetings and notes", text: $query)
+                .focused($searchFocused)
+                .submitLabel(.search)
+                .autocorrectionDisabled()
+            if !query.isEmpty || searchFocused {
+                Button {
+                    query = ""
+                    searchFocused = false
+                } label: { Text("Cancel").font(.subheadline.weight(.semibold)) }
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .padding(.horizontal, 16)
+        .padding(.bottom, 8)
+    }
+
+    private var filterChips: some View {
+        let options: [DateFilter] = [.all, .today, .yesterday, .thisWeek, .lastWeek, .thisMonth]
+        let custom = !options.contains(filter)
+        return ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                ForEach(options, id: \.title) { option in
+                    chip(option == .all ? "All" : option.title, selected: filter == option) { filter = option }
+                }
+                if custom { chip(filter.title, selected: true) { filter = .all } }
+                Button { showDatePicker = true } label: {
+                    Label("Pick", systemImage: "calendar")
+                        .font(.footnote.weight(.semibold))
+                        .padding(.horizontal, 12).padding(.vertical, 7)
+                        .background(Color(.secondarySystemGroupedBackground), in: Capsule())
+                }
+            }
+            .padding(.horizontal, 16)
+        }
+        .padding(.bottom, 6)
+    }
+
+    private func chip(_ title: String, selected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.footnote.weight(.semibold))
+                .padding(.horizontal, 12).padding(.vertical, 7)
+                .foregroundStyle(selected ? Color.white : Color.primary)
+                .background(selected ? Color.accentColor : Color(.secondarySystemGroupedBackground), in: Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+
+    @ViewBuilder private var content: some View {
+        if store.meetings.isEmpty {
+            VStack(spacing: 10) {
+                Spacer()
+                Image("BrandIcon")
+                    .resizable()
+                    .frame(width: 96, height: 96)
+                    .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                    .shadow(color: .black.opacity(0.2), radius: 12, y: 6)
+                Text("Your first meeting starts here").font(.title3.weight(.semibold)).padding(.top, 8)
+                Text("Tap Record. When you stop, PerroNote writes the text and drafts the notes, with action items and dates.")
+                    .font(.subheadline).foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center).padding(.horizontal, 32)
+                Spacer()
+                Spacer()
+            }
+            .frame(maxWidth: .infinity)
+        } else if visible.isEmpty {
+            placeholder(icon: "magnifyingglass", title: "No matches",
+                        text: "Nothing fits the current search and date filter.")
+        } else {
+            List {
+                ForEach(groups, id: \.day) { group in
+                    Section {
+                        ForEach(group.meetings) { meeting in
+                            NavigationLink(value: meeting.id) { MeetingRow(meeting: meeting) }
+                                .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+                                .listRowBackground(Color.clear)
+                                .listRowSeparator(.hidden)
+                        }
+                        .onDelete { offsets in
+                            offsets.map { group.meetings[$0].id }.forEach(store.delete)
+                        }
+                    } header: {
+                        Text(dayTitle(group.day))
+                            .font(.caption.weight(.bold))
+                            .textCase(.uppercase)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                Color.clear.frame(height: 70).listRowBackground(Color.clear).listRowSeparator(.hidden)
+            }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+        }
+    }
+
+    private func placeholder(icon: String, title: String, text: String) -> some View {
+        VStack(spacing: 12) {
+            Spacer()
+            Image(systemName: icon).font(.system(size: 64)).foregroundStyle(.secondary)
+            Text(title).font(.title3.weight(.semibold))
+            Text(text)
+                .font(.subheadline).foregroundStyle(.secondary)
+                .multilineTextAlignment(.center).padding(.horizontal, 32)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity)
+    }
+}
+
+private struct DateFilterSheet: View {
+    @Binding var filter: DateFilter
+    @Environment(\.dismiss) private var dismiss
+    @State private var scope = 0
+    @State private var date = Date()
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 12) {
+                Picker("", selection: $scope) {
+                    Text("Day").tag(0)
+                    Text("Week").tag(1)
+                }
+                .pickerStyle(.segmented)
+                DatePicker("", selection: $date, in: ...Date(), displayedComponents: .date)
+                    .datePickerStyle(.graphical)
+                    .labelsHidden()
+                Text(scope == 0 ? "Show meetings from this day." : "Show meetings from the whole week of this day.")
+                    .font(.footnote).foregroundStyle(.secondary)
+                Spacer()
+            }
+            .padding()
+            .navigationTitle("Choose a date")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Show") {
+                        filter = scope == 0 ? .day(date) : .week(date)
+                        dismiss()
+                    }
+                }
+            }
+        }
+        .presentationDetents([.large])
+    }
+}
+
+private struct MeetingRow: View {
+    let meeting: Meeting
+
+    private var people: [String] { meeting.attendeeNames ?? meeting.notes?.attendees ?? [] }
+
+    private func initials(_ name: String) -> String {
+        let parts = name.split(separator: " ").prefix(2)
+        return parts.compactMap { $0.first.map(String.init) }.joined().uppercased()
+    }
+
+    private func color(_ name: String) -> Color {
+        let palette: [Color] = [.indigo, .orange, .blue, .teal, .pink, .purple, .green]
+        return palette[abs(name.hashValue) % palette.count]
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Text(meeting.date.formatted(date: .omitted, time: .shortened))
+                .font(.caption.weight(.bold))
+                .foregroundStyle(Color.accentColor)
+                .frame(width: 52, alignment: .leading)
+                .padding(.top, 2)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(meeting.title).font(.headline).lineLimit(2)
+                if meeting.status == .done, let n = meeting.notes {
+                    if !n.summary.isEmpty {
+                        Text(n.summary).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                    }
+                    HStack(spacing: 8) {
+                        if !people.isEmpty { avatars }
+                        Text(formatDuration(meeting.duration)).font(.caption).foregroundStyle(.secondary)
+                        Spacer(minLength: 0)
+                        openBadge(n)
+                    }
+                    .padding(.top, 2)
+                } else {
+                    statusLabel
+                    Text(formatDuration(meeting.duration)).font(.caption).foregroundStyle(.secondary)
+                }
+            }
+        }
+        .padding(12)
+        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private var avatars: some View {
+        HStack(spacing: -5) {
+            ForEach(Array(people.prefix(3).enumerated()), id: \.offset) { _, name in
+                Text(initials(name))
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 20, height: 20)
+                    .background(color(name), in: Circle())
+                    .overlay(Circle().stroke(Color(.secondarySystemGroupedBackground), lineWidth: 1.5))
+            }
+        }
+    }
+
+    @ViewBuilder private func openBadge(_ n: MeetingNotes) -> some View {
+        let open = n.actionItems.filter { !$0.done && !$0.task.isEmpty }.count
+        if open > 0 {
+            Text("\(open) open")
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(.red)
+                .padding(.horizontal, 8).padding(.vertical, 3)
+                .background(Color.red.opacity(0.14), in: Capsule())
+        } else if !n.actionItems.isEmpty {
+            Text("\u{2713} all done")
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(.green)
+                .padding(.horizontal, 8).padding(.vertical, 3)
+                .background(Color.green.opacity(0.16), in: Capsule())
+        }
+    }
+
+    @ViewBuilder private var statusLabel: some View {
+        switch meeting.status {
+        case .transcribing:
+            HStack(spacing: 6) { ProgressView().controlSize(.small); Text("Converting to text…") }
+                .font(.caption.weight(.semibold)).foregroundStyle(.orange)
+        case .diarizing:
+            HStack(spacing: 6) { ProgressView().controlSize(.small); Text("Finding who spoke…") }
+                .font(.caption.weight(.semibold)).foregroundStyle(.orange)
+        case .generating:
+            HStack(spacing: 6) { ProgressView().controlSize(.small); Text("Drafting notes…") }
+                .font(.caption.weight(.semibold)).foregroundStyle(.orange)
+        case .failed:
+            Label("Needs attention", systemImage: "exclamationmark.triangle").font(.caption).foregroundStyle(.red)
+        case .recorded:
+            Label("Recorded", systemImage: "waveform").font(.caption).foregroundStyle(.secondary)
+        case .done:
+            EmptyView()
+        }
+    }
+}
+
+func formatDuration(_ t: TimeInterval) -> String {
+    let s = Int(t.rounded())
+    let h = s / 3600, m = (s % 3600) / 60, sec = s % 60
+    return h > 0 ? String(format: "%d:%02d:%02d", h, m, sec) : String(format: "%d:%02d", m, sec)
+}

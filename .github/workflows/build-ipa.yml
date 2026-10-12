@@ -1,0 +1,64 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate project
+        run: xcodegen generate
+
+      - name: Cache Swift packages
+        uses: actions/cache@v4
+        with:
+          path: build/SourcePackages
+          key: spm-${{ hashFiles('project.yml') }}
+
+      - name: Build
+        run: |
+          xcodebuild \
+            -project PerroNote.xcodeproj \
+            -scheme PerroNote \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            -clonedSourcePackagesDirPath build/SourcePackages \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build > xcodebuild.log 2>&1 || {
+              grep -n -A8 "error:" xcodebuild.log | head -300
+              tail -40 xcodebuild.log
+              exit 1
+            }
+
+      - name: Package
+        run: |
+          mkdir -p Payload
+          cp -R build/Build/Products/Release-iphoneos/PerroNote.app Payload/
+          zip -qry PerroNote.ipa Payload
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: PerroNote-ipa
+          path: PerroNote.ipa
+          retention-days: 7
+          if-no-files-found: error

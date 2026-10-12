@@ -1,0 +1,9 @@
+*.xcodeproj
+build/
+DerivedData/
+xcuserdata/
+.DS_Store
+*.ipa
+xcodebuild.log
+PerroNote/Info.plist
+PerroNoteWidgets/Info.plist
