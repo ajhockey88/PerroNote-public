@@ -84,7 +84,8 @@ struct WhoIsWhoView: View {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { player.stop(); dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Update notes") {
-                        if meeting?.notesEdited == true { confirmReplace = true } else { save() }
+                        // Finished notes only get the names swapped in, so typed edits stay; anything else is drafted fresh.
+                        if meeting?.notesEdited == true && meeting?.status != .done { confirmReplace = true } else { save() }
                     }
                 }
             }

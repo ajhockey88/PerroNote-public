@@ -156,9 +156,11 @@ final class MeetingStore: ObservableObject {
         }
     }
 
-    /// Saves who is who, remembers the voices, and redrafts the notes with real names.
+    /// Saves who is who, remembers the voices, and puts the real names into the notes.
+    /// Notes that already exist get the names swapped in place, so no request goes to Claude.
     func applyIdentification(_ id: UUID, assignments: [String: Person], attendeeNames: [String],
                              people: PeopleStore) async {
+        let oldLabels = Dictionary(uniqueKeysWithValues: (meeting(id)?.voices ?? []).map { ($0.id, $0.label) })
         update(id) { m in
             m.attendeeNames = attendeeNames
             if var voices = m.voices {
@@ -180,7 +182,43 @@ final class MeetingStore: ObservableObject {
                 if let person = assignments[voice.id] { people.remember(embedding: voice.embedding, for: person.id) }
             }
         }
-        await process(id)
+        guard let m = meeting(id), m.status == .done, m.notes != nil else {
+            await process(id)
+            return
+        }
+        var renames: [String: String] = [:]
+        for voice in m.voices ?? [] {
+            if let old = oldLabels[voice.id], old != voice.label { renames[old] = voice.label }
+        }
+        update(id) { m in
+            guard var notes = m.notes else { return }
+            notes.replaceNames(renames)
+            for name in attendeeNames where !notes.attendees.contains(where: { $0.caseInsensitiveCompare(name) == .orderedSame }) {
+                notes.attendees.append(name)
+            }
+            var seen = Set<String>()
+            notes.attendees = notes.attendees.filter { seen.insert($0.lowercased()).inserted }
+            m.notes = notes
+            if !m.titleEdited { m.title = Self.replacingNames(renames, in: m.title) }
+        }
+    }
+
+    /// Swaps whole names in one pass, so "Speaker 1" never matches inside "Speaker 10" and A to B, B to C can't chain.
+    nonisolated static func replacingNames(_ renames: [String: String], in text: String) -> String {
+        guard !renames.isEmpty else { return text }
+        let alternatives = renames.keys.sorted { $0.count > $1.count }.map(NSRegularExpression.escapedPattern(for:))
+        guard let regex = try? NSRegularExpression(pattern: "(?<![\\p{L}\\p{N}])(?:" + alternatives.joined(separator: "|") + ")(?![\\p{L}\\p{N}])")
+        else { return text }
+        let ns = text as NSString
+        var out = ""
+        var last = 0
+        for match in regex.matches(in: text, range: NSRange(location: 0, length: ns.length)) {
+            out += ns.substring(with: NSRange(location: last, length: match.range.location - last))
+            let found = ns.substring(with: match.range)
+            out += renames[found] ?? found
+            last = match.range.location + match.range.length
+        }
+        return out + ns.substring(from: last)
     }
 
     /// Keeps action items you already ticked when the notes are redrafted, even if the wording shifted a little.

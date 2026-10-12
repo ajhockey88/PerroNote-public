@@ -96,6 +96,29 @@ struct MeetingNotes: Codable, Hashable {
     /// Keys: "p:<topic id>:<point number>", "d:<decision number>", "a:<action item id>".
     var times: [String: Double]? = nil
 
+    /// Puts new names in place of old ones everywhere in the notes, for example "Speaker 2" to "Priya".
+    mutating func replaceNames(_ renames: [String: String]) {
+        guard !renames.isEmpty else { return }
+        func r(_ s: String) -> String { MeetingStore.replacingNames(renames, in: s) }
+        summary = r(summary)
+        attendees = attendees.map(r)
+        discussion = discussion.map(r)
+        decisions = decisions.map(r)
+        openQuestions = openQuestions.map(r)
+        nextSteps = nextSteps.map(r)
+        for i in actionItems.indices {
+            actionItems[i].task = r(actionItems[i].task)
+            actionItems[i].owner = actionItems[i].owner.map(r)
+        }
+        topics = topics?.map { t in
+            var t = t
+            t.title = r(t.title)
+            t.points = t.points.map(r)
+            t.subs = t.subs?.map { $0.map(r) }
+            return t
+        }
+    }
+
     /// Call after removing item number `removed` under a key prefix so later items keep the right time.
     mutating func dropTime(prefix: String, removed: Int) {
         guard let old = times else { return }
