@@ -113,8 +113,9 @@ struct MeetingListView: View {
         } message: {
             Text(importError ?? "")
         }
-        .onAppear(perform: takeRecordRequest)
+        .onAppear { takeRecordRequest(); takeActionsRequest() }
         .onChange(of: recordRequest.pending) { _ in takeRecordRequest() }
+        .onChange(of: recordRequest.showActions) { _ in takeActionsRequest() }
         .sheet(isPresented: $showSettings) { SettingsView() }
         .sheet(isPresented: $showDatePicker) { DateFilterSheet(filter: $filter) }
     }
@@ -125,6 +126,13 @@ struct MeetingListView: View {
         recordRequest.pending = false
         showPage(actions: false)
         showRecorder = true
+    }
+
+    private func takeActionsRequest() {
+        guard recordRequest.showActions else { return }
+        recordRequest.showActions = false
+        path = NavigationPath()
+        showPage(actions: true)
     }
 
     private func showPage(actions: Bool) {

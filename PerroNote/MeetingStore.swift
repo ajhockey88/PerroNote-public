@@ -20,6 +20,7 @@ final class MeetingStore: ObservableObject {
     init() {
         load()
         loadLoose()
+        applyWidgetTicks(saving: false)
         // A run that was interrupted (app killed mid-processing) can be retried from the detail screen.
         for i in meetings.indices where meetings[i].isBusy {
             meetings[i].status = .failed
@@ -97,7 +98,48 @@ final class MeetingStore: ObservableObject {
     func refreshAlerts() {
         let people = BannerSettings.people(from: UserDefaults.standard.string(forKey: BannerSettings.peopleKey) ?? "")
         let myName = UserDefaults.standard.string(forKey: BannerSettings.myNameKey) ?? ""
-        DueAlerts.reschedule(allActionItems.filter { BannerSettings.matches($0, people: people, myName: myName) })
+        let mine = allActionItems.filter { BannerSettings.matches($0, people: people, myName: myName) }
+        DueAlerts.reschedule(mine)
+        writeWidget(mine)
+    }
+
+    /// Hands the open items to the Home Screen and Lock Screen widgets, soonest due first.
+    private func writeWidget(_ items: [ActionItem]) {
+        let ticks = WidgetStore.readTicks()
+        let shown = items.compactMap { item -> WidgetItem? in
+            let key = item.id.uuidString
+            let done = ticks[key] ?? item.done
+            // Items ticked in the app drop off; ones ticked on the widget stay struck through until the app catches up.
+            guard !item.task.isEmpty, !item.done || ticks[key] != nil else { return nil }
+            return WidgetItem(id: key, task: item.task, due: item.dueDate, done: done)
+        }
+        let sorted = shown.enumerated().sorted { a, b in
+            switch (a.element.due, b.element.due) {
+            case let (x?, y?): return x == y ? a.offset < b.offset : x < y
+            case (.some, nil): return true
+            case (nil, .some): return false
+            default: return a.offset < b.offset
+            }
+        }.map(\.element)
+        WidgetStore.write(WidgetSnapshot(items: sorted))
+    }
+
+    /// Copies items ticked on the widget into the notes and your own list.
+    func applyWidgetTicks(saving: Bool = true) {
+        let ticks = WidgetStore.readTicks()
+        guard !ticks.isEmpty else { return }
+        for (key, done) in ticks {
+            guard let id = UUID(uuidString: key) else { continue }
+            if let i = looseItems.firstIndex(where: { $0.id == id }) { looseItems[i].done = done }
+            for m in meetings.indices {
+                if let i = meetings[m].notes?.actionItems.firstIndex(where: { $0.id == id }) {
+                    meetings[m].notes?.actionItems[i].done = done
+                }
+            }
+        }
+        WidgetStore.clearTicks()
+        if let data = try? JSONEncoder().encode(looseItems) { try? data.write(to: Self.looseURL, options: .atomic) }
+        if saving { save() }
     }
 
     /// Every tag used on any meeting, A to Z.

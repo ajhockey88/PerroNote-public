@@ -19,4 +19,16 @@ struct StartRecordingIntent: AppIntent {
 final class RecordRequest: ObservableObject {
     static let shared = RecordRequest()
     @Published var pending = false
+    /// Set by a widget or a due date alert; the meetings screen slides over to the action items.
+    @Published var showActions = false
+
+    /// perronote://record starts recording; perronote://actions opens the action items.
+    func open(_ url: URL) {
+        guard url.scheme == "perronote" else { return }
+        switch url.host {
+        case "record": pending = true
+        case "actions": showActions = true
+        default: break
+        }
+    }
 }

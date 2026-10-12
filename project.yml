@@ -22,13 +22,17 @@ targets:
       properties:
         CFBundleDisplayName: PerroNote
         CFBundleShortVersionString: "1.6"
-        CFBundleVersion: "21"
+        CFBundleVersion: "22"
         UILaunchScreen: {}
         UIBackgroundModes:
           - audio
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
         NSSupportsLiveActivities: true
+        CFBundleURLTypes:
+          - CFBundleURLName: com.ajhockey88.perronote
+            CFBundleURLSchemes:
+              - perronote
         UIAppFonts:
           - PermanentMarker-Regular.ttf
         NSMicrophoneUsageDescription: PerroNote records your meetings so it can turn them into notes.
@@ -36,6 +40,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.ajhockey88.perronote
+        CODE_SIGN_ENTITLEMENTS: PerroNote/PerroNote.entitlements
         SWIFT_VERSION: "5.0"
         TARGETED_DEVICE_FAMILY: "1"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
@@ -47,6 +52,7 @@ targets:
       - PerroNoteWidgets
       - PerroNote/RecordingAttributes.swift
       - PerroNote/StartRecordingIntent.swift
+      - PerroNote/WidgetData.swift
       - PerroNote/CassetteView.swift
       - PerroNote/Fonts
     info:
@@ -54,7 +60,7 @@ targets:
       properties:
         CFBundleDisplayName: PerroNote Recording
         CFBundleShortVersionString: "1.6"
-        CFBundleVersion: "21"
+        CFBundleVersion: "22"
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
         UIAppFonts:
@@ -62,6 +68,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.ajhockey88.perronote.widgets
+        CODE_SIGN_ENTITLEMENTS: PerroNoteWidgets/PerroNoteWidgets.entitlements
         SWIFT_VERSION: "5.0"
         TARGETED_DEVICE_FAMILY: "1"
         SKIP_INSTALL: "YES"

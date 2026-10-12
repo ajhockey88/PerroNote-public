@@ -7,6 +7,8 @@ import WidgetKit
 struct PerroNoteWidgets: WidgetBundle {
     var body: some Widget {
         RecordingLiveActivity()
+        ActionItemsWidget()
+        RecordCircleWidget()
         if #available(iOS 18.0, *) {
             RecordControl()
         }

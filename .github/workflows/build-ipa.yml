@@ -54,6 +54,13 @@ jobs:
         run: |
           mkdir -p Payload
           cp -R build/Build/Products/Release-iphoneos/PerroNote.app Payload/
+          # Ad-hoc sign with the App Group so the widgets can read the action items once the app is re-signed.
+          if [ -d Payload/PerroNote.app/Frameworks ]; then
+            find Payload/PerroNote.app/Frameworks -maxdepth 1 \( -name '*.framework' -o -name '*.dylib' \) -exec codesign -f -s - {} \;
+          fi
+          codesign -f -s - --entitlements PerroNoteWidgets/PerroNoteWidgets.entitlements Payload/PerroNote.app/PlugIns/PerroNoteWidgets.appex
+          codesign -f -s - --entitlements PerroNote/PerroNote.entitlements Payload/PerroNote.app
+          codesign -d --entitlements - Payload/PerroNote.app
           zip -qry PerroNote.ipa Payload
 
       - uses: actions/upload-artifact@v5
