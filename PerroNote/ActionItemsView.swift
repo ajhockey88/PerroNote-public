@@ -53,7 +53,7 @@ struct ActionItemsView: View {
                     Text("All").tag(true)
                 }
                 .pickerStyle(.segmented)
-                filters.noPageSwipe()
+                filters.noPageSwipe(onActions: true)
             }
             .padding(.leading, paper ? Paper.textX - 4 : 16)
             .padding(.trailing, 16)

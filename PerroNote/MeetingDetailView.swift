@@ -26,6 +26,8 @@ struct MeetingDetailView: View {
     @State private var showUsage = false
     @State private var askingVoices = false
     @State private var editingTags = false
+    @State private var customAddress = false
+    @State private var customEmail = ""
     @State private var voiceCount = 0
     @AppStorage(AppAppearance.key) private var appearance = AppAppearance.system.rawValue
     @PaperPitch private var pitch
@@ -134,7 +136,23 @@ struct MeetingDetailView: View {
             ForEach(OutlookSettings.accounts) { account in
                 Button(account.name) { send(meeting, to: account) }
             }
+            Button("Custom\u{2026}") { customEmail = ""; customAddress = true }
             Button("Cancel", role: .cancel) {}
+        }
+        .alert("Send to an email address", isPresented: $customAddress) {
+            TextField("name@example.com", text: $customEmail)
+                .keyboardType(.emailAddress)
+                .textContentType(.emailAddress)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+            Button("Send") {
+                let email = customEmail.trimmingCharacters(in: .whitespacesAndNewlines)
+                let target = OutlookAccount(name: email, email: email)
+                if target.isValid { send(meeting, to: target) } else { sendError = "\u{201C}\(email)\u{201D} isn't a full email address." }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("The notes and the Word document go to this address once. It isn't saved.")
         }
         .alert("Set up sending first", isPresented: $noAccounts) {
             Button("Open Settings") { showSettings = true }
@@ -280,10 +298,7 @@ struct MeetingDetailView: View {
     }
 
     private var setupMessage: String {
-        if OutlookSettings.accounts.isEmpty {
-            return "Add a name and email address under Send to Outlook in Settings."
-        }
-        return "Add your Gmail address and app password under Send to Outlook in Settings, so the app can send as you."
+        "Add your Gmail address and app password under Send to Outlook in Settings, so the app can send as you."
     }
 
     private func regenerate(_ meeting: Meeting, transcript: Bool) {
@@ -542,7 +557,7 @@ struct MeetingDetailView: View {
                     }
                     .buttonStyle(.plain)
                     Button {
-                        if OutlookSettings.accounts.isEmpty || !MailSettings.isConfigured { noAccounts = true } else { pickingAccount = true }
+                        if !MailSettings.isConfigured { noAccounts = true } else { pickingAccount = true }
                     } label: {
                         Label("Send to Outlook", systemImage: "paperplane.fill")
                             .font(.headline)

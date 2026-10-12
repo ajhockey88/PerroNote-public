@@ -19,7 +19,7 @@ struct MeetingListView: View {
     @State private var path = NavigationPath()
     @State private var tagging: TagTarget?
     /// Where the scrolling chip rows are; a sideways drag that starts on one scrolls the chips, never the page.
-    @State private var noSwipeZones: [CGRect] = []
+    @State private var noSwipeZones: [PageSwipeZones.Zone] = []
     @AppStorage(BannerSettings.showKey) private var showBanner = true
     @ObservedObject private var recordRequest = RecordRequest.shared
     @GestureState(resetTransaction: Transaction(animation: MeetingListView.pageSpring)) private var swipe = PageSwipe()
@@ -155,7 +155,7 @@ struct MeetingListView: View {
     }
 
     private func onChips(_ point: CGPoint) -> Bool {
-        noSwipeZones.contains { $0.insetBy(dx: 0, dy: -6).contains(point) }
+        noSwipeZones.contains { $0.onActions == showingActions && ($0.top - 6...$0.bottom + 6).contains(point.y) }
     }
 
     private func swipeCounts(_ t: CGSize) -> Bool {
@@ -504,18 +504,26 @@ struct MeetingListView: View {
     }
 }
 
-/// The frames of the chip rows, in the pager's coordinates.
+/// Where the chip rows sit, top to bottom, on each page. Only heights are kept, so sliding the pages
+/// sideways doesn't change the value and doesn't redraw the screen on every frame of a swipe.
 struct PageSwipeZones: PreferenceKey {
+    struct Zone: Equatable {
+        var onActions: Bool
+        var top: CGFloat
+        var bottom: CGFloat
+    }
     static let space = "pager"
-    static var defaultValue: [CGRect] = []
-    static func reduce(value: inout [CGRect], nextValue: () -> [CGRect]) { value += nextValue() }
+    static var defaultValue: [Zone] = []
+    static func reduce(value: inout [Zone], nextValue: () -> [Zone]) { value += nextValue() }
 }
 
 extension View {
     /// Marks a sideways-scrolling row so swiping on it doesn't flip between meetings and action items.
-    func noPageSwipe() -> some View {
+    func noPageSwipe(onActions: Bool = false) -> some View {
         background(GeometryReader { g in
-            Color.clear.preference(key: PageSwipeZones.self, value: [g.frame(in: .named(PageSwipeZones.space))])
+            let frame = g.frame(in: .named(PageSwipeZones.space))
+            Color.clear.preference(key: PageSwipeZones.self,
+                                   value: [.init(onActions: onActions, top: frame.minY.rounded(), bottom: frame.maxY.rounded())])
         })
     }
 }
