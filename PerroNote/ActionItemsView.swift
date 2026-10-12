@@ -85,7 +85,7 @@ struct ActionItemsView: View {
             .padding(.bottom, 12)
             .accessibilityLabel("Add an action item")
         }
-        .sheet(isPresented: $adding) { NewActionItemView(knownPeople: people) }
+        .sheet(isPresented: $adding) { NewActionItemView() }
         .paperScreen()
     }
 
@@ -107,10 +107,12 @@ struct ActionItemsView: View {
         .padding(.bottom, 8)
     }
 
+    /// A plain scrolling stack rather than a List: a List laid out off screen re-measures its rows as it
+    /// slides in, which made them jump for a moment after the swipe.
     private var list: some View {
-        List {
-            if groups.isEmpty && loose.isEmpty {
-                Section {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                if groups.isEmpty && loose.isEmpty {
                     VStack(spacing: 8) {
                         Image(systemName: "checklist").font(.largeTitle).foregroundStyle(.secondary)
                         Text(filtering ? "Nothing matches" : showDone ? "No action items yet" : "Nothing open")
@@ -118,33 +120,50 @@ struct ActionItemsView: View {
                         Text(filtering ? "No action items fit the filters you picked."
                                        : "Action items from your meetings show up here.")
                             .font(.subheadline).foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
                     }
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 24)
+                    .padding(.vertical, 32)
                 }
-                .listRowBackground(Color.clear)
-            }
 
-            if !loose.isEmpty {
-                Section("Added by you") {
-                    ForEach(loose) { item in looseRow(item) }
-                        .onDelete { offsets in offsets.map { loose[$0].id }.forEach(store.deleteLooseItem) }
-                }
-            }
-
-            ForEach(groups, id: \.meeting.id) { group in
-                Section {
-                    ForEach(group.items) { item in
-                        row(item, in: group.meeting)
+                if !loose.isEmpty {
+                    card("Added by you") {
+                        ForEach(Array(loose.enumerated()), id: \.element.id) { i, item in
+                            if i > 0 { Divider().padding(.leading, 44) }
+                            looseRow(item)
+                        }
                     }
-                } header: {
-                    Text("\(group.meeting.title) · \(group.meeting.date.formatted(date: .abbreviated, time: .omitted))")
+                }
+
+                ForEach(groups, id: \.meeting.id) { group in
+                    card("\(group.meeting.title) · \(group.meeting.date.formatted(date: .abbreviated, time: .omitted))") {
+                        ForEach(Array(group.items.enumerated()), id: \.element.id) { i, item in
+                            if i > 0 { Divider().padding(.leading, 44) }
+                            row(item, in: group.meeting)
+                        }
+                    }
                 }
             }
+            .padding(.leading, paper ? Paper.textX - 4 : 16)
+            .padding(.trailing, 16)
+            .padding(.top, 8)
+            .padding(.bottom, 90)
         }
-        .scrollContentBackground(.hidden)
-        .safeAreaInset(edge: .bottom) { Color.clear.frame(height: 70) }
         .sheet(isPresented: $pickingDay) { dayPicker }
+    }
+
+    /// A titled group of rows on a rounded card, like a grouped list section.
+    private func card<Rows: View>(_ title: String, @ViewBuilder rows: () -> Rows) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.footnote)
+                .textCase(.uppercase)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .padding(.leading, 4)
+            VStack(alignment: .leading, spacing: 0) { rows() }
+                .background(chipFill, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
     }
 
     private var chipFill: Color { paper ? Color.white.opacity(0.5) : Color(.secondarySystemGroupedBackground) }
@@ -252,6 +271,11 @@ struct ActionItemsView: View {
             }
             Spacer(minLength: 0)
         }
+        .padding(.horizontal, 12).padding(.vertical, 10)
+        .contentShape(Rectangle())
+        .contextMenu {
+            Button(role: .destructive) { store.deleteLooseItem(item.id) } label: { Label("Delete", systemImage: "trash") }
+        }
     }
 
     private func row(_ item: ActionItem, in meeting: Meeting) -> some View {
@@ -270,28 +294,34 @@ struct ActionItemsView: View {
             .buttonStyle(.borderless)
 
             NavigationLink(value: meeting.id) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(item.task.isEmpty ? "(empty)" : item.task)
-                        .strikethrough(item.done)
-                        .foregroundStyle(item.done ? .secondary : .primary)
-                    let meta = [item.owner, item.due.map { "due \($0)" }].compactMap { $0 }.joined(separator: " · ")
-                    if !meta.isEmpty {
-                        Text(meta).font(.caption).foregroundStyle(.secondary)
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(item.task.isEmpty ? "(empty)" : item.task)
+                            .strikethrough(item.done)
+                            .foregroundStyle(item.done ? .secondary : .primary)
+                            .multilineTextAlignment(.leading)
+                        let meta = [item.owner, item.due.map { "due \($0)" }].compactMap { $0 }.joined(separator: " · ")
+                        if !meta.isEmpty {
+                            Text(meta).font(.caption).foregroundStyle(.secondary)
+                        }
                     }
+                    Spacer(minLength: 0)
+                    Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
                 }
+                .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
         }
+        .padding(.horizontal, 12).padding(.vertical, 10)
     }
 }
 
-/// Adds an action item by hand: what needs doing, who (optional) and a due date (optional).
+/// Adds an action item for you by hand: what needs doing and when it's due.
 struct NewActionItemView: View {
-    let knownPeople: [String]
     @EnvironmentObject private var store: MeetingStore
     @Environment(\.dismiss) private var dismiss
+    @AppStorage(BannerSettings.myNameKey) private var myName = ""
     @State private var task = ""
-    @State private var owner = ""
-    @State private var hasDue = true
     @State private var due = Date()
     @FocusState private var focused: Bool
 
@@ -301,32 +331,17 @@ struct NewActionItemView: View {
         NavigationStack {
             Form {
                 Section {
-                    TextField("What needs doing", text: $task, axis: .vertical)
+                    TextField("Action item", text: $task, axis: .vertical)
                         .lineLimit(1...4)
                         .focused($focused)
-                    TextField("Who (optional)", text: $owner)
-                        .textInputAutocapitalization(.words)
-                        .autocorrectionDisabled()
-                    let matches = knownPeople.filter {
-                        !owner.isEmpty && $0.localizedCaseInsensitiveContains(owner) && $0.caseInsensitiveCompare(owner) != .orderedSame
-                    }
-                    if !matches.isEmpty {
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack {
-                                ForEach(matches.prefix(6), id: \.self) { name in
-                                    Button(name) { owner = name }.buttonStyle(.bordered)
-                                }
-                            }
-                        }
-                    }
+                } footer: {
+                    Text(myName.isEmpty ? "Assigned to you. Add your name under Action items banner in Settings so it matches your items from meetings."
+                                        : "Assigned to you (\(myName)).")
                 }
-                Section {
-                    Toggle("Due date", isOn: $hasDue.animation())
-                    if hasDue {
-                        DatePicker("Due", selection: $due, displayedComponents: .date)
-                            .datePickerStyle(.graphical)
-                            .labelsHidden()
-                    }
+                Section("Due") {
+                    DatePicker("Due", selection: $due, displayedComponents: .date)
+                        .datePickerStyle(.graphical)
+                        .labelsHidden()
                 }
             }
             .paperScreen()
@@ -346,10 +361,10 @@ struct NewActionItemView: View {
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")
         f.dateFormat = "EEE, MMM d, yyyy"
-        let who = owner.trimmingCharacters(in: .whitespacesAndNewlines)
+        let me = myName.trimmingCharacters(in: .whitespacesAndNewlines)
         store.addLooseItem(ActionItem(task: task.trimmingCharacters(in: .whitespacesAndNewlines),
-                                      owner: who.isEmpty ? nil : who,
-                                      due: hasDue ? f.string(from: due) : nil,
+                                      owner: me.isEmpty ? "Me" : me,
+                                      due: f.string(from: due),
                                       created: Date()))
         dismiss()
     }
