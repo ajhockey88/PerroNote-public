@@ -10,9 +10,44 @@ struct ActionItemsView: View {
 
     private var paper: Bool { appearance == AppAppearance.paper.rawValue }
 
+    /// The person whose items are shown, or nil for everyone.
+    @State private var person: String?
+    @State private var dateFilter: DateFilter = .all
+    @State private var pickingDay = false
+    @State private var pickedDay = Date()
+
+    private var filtering: Bool { person != nil || dateFilter != .all }
+
+    /// The people an item is assigned to. An owner like "Priya and Sam" counts for both.
+    private static func owners(_ item: ActionItem) -> [String] {
+        guard let owner = item.owner else { return [] }
+        return owner
+            .replacingOccurrences(of: " and ", with: ",")
+            .replacingOccurrences(of: "&", with: ",")
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+    }
+
+    /// Everyone who owns at least one action item, A to Z.
+    private var people: [String] {
+        var seen = Set<String>()
+        var out: [String] = []
+        for meeting in store.meetings {
+            for item in meeting.notes?.actionItems ?? [] where !item.task.isEmpty {
+                for name in Self.owners(item) where seen.insert(name.lowercased()).inserted { out.append(name) }
+            }
+        }
+        return out.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+    }
+
     private var groups: [(meeting: Meeting, items: [ActionItem])] {
         store.meetings.compactMap { meeting in
-            let items = (meeting.notes?.actionItems ?? []).filter { showDone || !$0.done }
+            guard dateFilter.contains(meeting.date) else { return nil }
+            let items = (meeting.notes?.actionItems ?? []).filter { item in
+                (showDone || !item.done)
+                    && (person.map { p in Self.owners(item).contains { $0.caseInsensitiveCompare(p) == .orderedSame } } ?? true)
+            }
             return items.isEmpty ? nil : (meeting, items)
         }
     }
@@ -52,17 +87,20 @@ struct ActionItemsView: View {
                     Text("All").tag(true)
                 }
                 .pickerStyle(.segmented)
+                filters
             }
             .listRowBackground(Color.clear)
             .listRowInsets(EdgeInsets())
+            .listRowSeparator(.hidden)
 
             if groups.isEmpty {
                 Section {
                     VStack(spacing: 8) {
                         Image(systemName: "checklist").font(.largeTitle).foregroundStyle(.secondary)
-                        Text(showDone ? "No action items yet" : "Nothing open")
+                        Text(filtering ? "Nothing matches" : showDone ? "No action items yet" : "Nothing open")
                             .font(.headline)
-                        Text("Action items from your meetings show up here.")
+                        Text(filtering ? "No action items fit the person and date you picked."
+                                       : "Action items from your meetings show up here.")
                             .font(.subheadline).foregroundStyle(.secondary)
                     }
                     .frame(maxWidth: .infinity)
@@ -82,6 +120,73 @@ struct ActionItemsView: View {
             }
         }
         .scrollContentBackground(.hidden)
+        .sheet(isPresented: $pickingDay) { dayPicker }
+    }
+
+    private var chipFill: Color { paper ? Color.white.opacity(0.5) : Color(.secondarySystemGroupedBackground) }
+
+    /// Who and when: a person menu, a date menu, and a way to clear both.
+    private var filters: some View {
+        HStack(spacing: 6) {
+            Menu {
+                Button { person = nil } label: { pickLabel("Everyone", on: person == nil) }
+                if !people.isEmpty { Divider() }
+                ForEach(people, id: \.self) { name in
+                    Button { person = name } label: { pickLabel(name, on: person == name) }
+                }
+            } label: {
+                chip(person ?? "Everyone", icon: "person", on: person != nil)
+            }
+            Menu {
+                ForEach([DateFilter.all, .today, .yesterday, .thisWeek, .lastWeek, .thisMonth], id: \.title) { option in
+                    Button { dateFilter = option } label: { pickLabel(option.title, on: dateFilter == option) }
+                }
+                Divider()
+                Button { pickingDay = true } label: { Label("Pick a day\u{2026}", systemImage: "calendar") }
+            } label: {
+                chip(dateFilter.title, icon: "calendar", on: dateFilter != .all)
+            }
+            Spacer(minLength: 0)
+            if filtering {
+                Button("Clear") { person = nil; dateFilter = .all }
+                    .font(.footnote.weight(.semibold))
+            }
+        }
+        .menuStyle(.button)
+        .buttonStyle(.borderless)
+        .padding(.top, 8)
+    }
+
+    @ViewBuilder private func pickLabel(_ title: String, on: Bool) -> some View {
+        if on { Label(title, systemImage: "checkmark") } else { Text(title) }
+    }
+
+    private func chip(_ title: String, icon: String, on: Bool) -> some View {
+        Label(title, systemImage: icon)
+            .font(.footnote.weight(.semibold))
+            .lineLimit(1)
+            .padding(.horizontal, 12).padding(.vertical, 7)
+            .foregroundStyle(on ? Color.white : Color.primary)
+            .background(on ? Color.accentColor : chipFill, in: Capsule())
+    }
+
+    private var dayPicker: some View {
+        NavigationStack {
+            DatePicker("", selection: $pickedDay, in: ...Date(), displayedComponents: .date)
+                .datePickerStyle(.graphical)
+                .labelsHidden()
+                .padding()
+                .frame(maxHeight: .infinity, alignment: .top)
+                .navigationTitle("Action items from")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) { Button("Cancel") { pickingDay = false } }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Show") { dateFilter = .day(pickedDay); pickingDay = false }
+                    }
+                }
+        }
+        .presentationDetents([.large])
     }
 
     private func row(_ item: ActionItem, in meeting: Meeting) -> some View {
