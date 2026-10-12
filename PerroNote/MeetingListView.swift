@@ -81,6 +81,8 @@ struct MeetingListView: View {
                 }
                 .frame(width: geo.size.width, alignment: .leading)
                 .offset(x: (showingActions ? 0 : -geo.size.width) + swipe.x)
+                // While the pages slide, the lists hold still instead of drifting up or down with the finger.
+                .scrollDisabled(swipe.counts == true)
                 .contentShape(Rectangle())
                 .simultaneousGesture(pageSwipe(width: geo.size.width))
             }
@@ -135,7 +137,7 @@ struct MeetingListView: View {
     /// Swiping right on the meetings shows the action items to their left; swiping left there comes back.
     /// Only a mostly sideways drag in the open direction counts, so scrolling and swipe-to-delete still work.
     private func pageSwipe(width: CGFloat) -> some Gesture {
-        DragGesture(minimumDistance: 20, coordinateSpace: .named(PageSwipeZones.space))
+        DragGesture(minimumDistance: 12, coordinateSpace: .named(PageSwipeZones.space))
             .updating($swipe) { value, state, _ in
                 if state.counts == nil {
                     state.counts = swipeCounts(value.translation) && !onChips(value.startLocation)
@@ -160,7 +162,7 @@ struct MeetingListView: View {
 
     private func swipeCounts(_ t: CGSize) -> Bool {
         let rightway = showingActions ? t.width < 0 : t.width > 0
-        return rightway && abs(t.width) > abs(t.height) * 1.5
+        return rightway && abs(t.width) > abs(t.height) * 1.2
     }
 
     private var mainPage: some View {
