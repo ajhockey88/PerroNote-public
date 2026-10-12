@@ -20,6 +20,7 @@ struct MeetingListView: View {
     @State private var tagging: TagTarget?
     /// Where the scrolling chip rows are; a sideways drag that starts on one scrolls the chips, never the page.
     @State private var noSwipeZones: [CGRect] = []
+    @AppStorage(BannerSettings.showKey) private var showBanner = true
     @ObservedObject private var recordRequest = RecordRequest.shared
     @GestureState(resetTransaction: Transaction(animation: MeetingListView.pageSpring)) private var swipe = PageSwipe()
     @AppStorage(AppAppearance.key) private var appearance = AppAppearance.system.rawValue
@@ -165,6 +166,12 @@ struct MeetingListView: View {
     private var mainPage: some View {
         VStack(spacing: 0) {
             if paper { paperHeader } else { header }
+            if showBanner && ActionBanner.hasItems(store) {
+                ActionBanner { showPage(actions: true) }
+                    .padding(.leading, paper ? Paper.textX - 8 : 16)
+                    .padding(.trailing, 16)
+                    .padding(.bottom, paper ? 12 : 10)
+            }
             if !store.meetings.isEmpty {
                 if paper {
                     paperSearch

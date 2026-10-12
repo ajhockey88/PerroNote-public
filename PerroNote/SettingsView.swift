@@ -16,6 +16,17 @@ struct SettingsView: View {
     @State private var model = UserDefaults.standard.string(forKey: NotesGenerator.modelDefaultsKey) ?? ""
     @State private var accounts = OutlookSettings.accounts
     @AppStorage(Vocabulary.key) private var vocabulary = ""
+    @AppStorage(BannerSettings.showKey) private var showBanner = true
+    @AppStorage(BannerSettings.dueKey) private var bannerDue = BannerSettings.Due.all.rawValue
+    @AppStorage(BannerSettings.peopleKey) private var bannerPeople = ""
+    @AppStorage(BannerSettings.myNameKey) private var myName = ""
+
+    private var bannerPeopleSummary: String {
+        let chosen = BannerSettings.people(from: bannerPeople)
+        if chosen.isEmpty { return "Everyone" }
+        let names = chosen.map { $0 == BannerSettings.me ? "Me" : $0 }
+        return names.count <= 2 ? names.joined(separator: ", ") : "\(names[0]) + \(names.count - 1) more"
+    }
 
     var body: some View {
         NavigationStack {
@@ -48,6 +59,25 @@ struct SettingsView: View {
                     Text("Model")
                 } footer: {
                     Text("Leave blank to use \(NotesGenerator.defaultModel).")
+                }
+
+                Section {
+                    Toggle("Show on the meetings page", isOn: $showBanner)
+                    TextField("Your name, like Anthony Perrone", text: $myName)
+                        .textInputAutocapitalization(.words)
+                        .autocorrectionDisabled()
+                    NavigationLink {
+                        BannerPeopleView()
+                    } label: {
+                        LabeledContent("Whose items", value: bannerPeopleSummary)
+                    }
+                    Picker("Due", selection: $bannerDue) {
+                        ForEach(BannerSettings.Due.allCases) { Text($0.title).tag($0.rawValue) }
+                    }
+                } header: {
+                    Text("Action items banner")
+                } footer: {
+                    Text("The card at the top of the meetings page. Choose whose action items it counts (pick as many as you like) and which due dates. Your name lets it find items assigned to you.")
                 }
 
                 Section {
