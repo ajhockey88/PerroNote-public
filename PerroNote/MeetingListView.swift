@@ -159,6 +159,7 @@ struct MeetingListView: View {
                 } else {
                     searchBar
                     filterChips
+                    tagChips
                 }
             }
             if paper && !visible.isEmpty { paperList } else { content }
@@ -168,14 +169,28 @@ struct MeetingListView: View {
             if paper { PaperBackground() } else { Color(.systemGroupedBackground).ignoresSafeArea() }
         }
         .overlay(alignment: .bottom) {
-            Button { showRecorder = true } label: {
-                Label("Record", systemImage: "mic.fill")
-                    .font(.headline)
-                    .padding(.horizontal, 34)
-                    .padding(.vertical, 14)
-                    .foregroundStyle(.white)
-                    .background(Color(red: 0.90, green: 0.28, blue: 0.24), in: Capsule())
-                    .shadow(color: Color(red: 0.90, green: 0.28, blue: 0.24).opacity(0.45), radius: 10, y: 5)
+            HStack(spacing: 10) {
+                if !store.meetings.isEmpty {
+                    Button { askingAll = true } label: {
+                        Label("Ask", systemImage: "bubble.left.and.text.bubble.right")
+                            .font(.subheadline.weight(.semibold))
+                            .padding(.horizontal, 18)
+                            .padding(.vertical, 14)
+                            .background(paper ? Color.white.opacity(0.6) : Color(.secondarySystemGroupedBackground), in: Capsule())
+                            .shadow(color: .black.opacity(0.12), radius: 6, y: 3)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Ask all meetings")
+                }
+                Button { showRecorder = true } label: {
+                    Label("Record", systemImage: "mic.fill")
+                        .font(.headline)
+                        .padding(.horizontal, 34)
+                        .padding(.vertical, 14)
+                        .foregroundStyle(.white)
+                        .background(Color(red: 0.90, green: 0.28, blue: 0.24), in: Capsule())
+                        .shadow(color: Color(red: 0.90, green: 0.28, blue: 0.24).opacity(0.45), radius: 10, y: 5)
+                }
             }
             .padding(.bottom, 10)
             .padding(.top, 30)
@@ -244,27 +259,8 @@ struct MeetingListView: View {
             .disabled(importBusy)
             .accessibilityLabel("Import a recording")
 
-            Button { askingAll = true } label: { Image(systemName: "bubble.left.and.text.bubble.right") }
-                .disabled(store.meetings.isEmpty)
-                .accessibilityLabel("Ask all meetings")
-
             NavigationLink(value: PeopleRoute()) { Image(systemName: "person.2") }
                 .accessibilityLabel("People")
-
-            Button { showPage(actions: true) } label: {
-                Image(systemName: "checklist")
-                    .overlay(alignment: .topTrailing) {
-                        if openActionItems > 0 {
-                            Text("\(min(openActionItems, 99))")
-                                .font(.system(size: 10, weight: .bold))
-                                .foregroundColor(.white)
-                                .padding(.horizontal, 4)
-                                .background(Color.red, in: Capsule())
-                                .offset(x: 9, y: -7)
-                        }
-                    }
-            }
-            .accessibilityLabel("Action items")
 
             Button { showSettings = true } label: { Image(systemName: "gearshape") }
                 .accessibilityLabel("Settings")
@@ -302,26 +298,6 @@ struct MeetingListView: View {
                     chip(option == .all ? "All" : option.title, selected: filter == option) { filter = option }
                 }
                 if custom { chip(filter.title, selected: true) { filter = .all } }
-                let tags = store.allTags
-                if !tags.isEmpty {
-                    Menu {
-                        Button { tagFilter = nil } label: {
-                            if tagFilter == nil { Label("All tags", systemImage: "checkmark") } else { Text("All tags") }
-                        }
-                        Divider()
-                        ForEach(tags, id: \.self) { tag in
-                            Button { tagFilter = tag } label: {
-                                if tagFilter == tag { Label(tag, systemImage: "checkmark") } else { Text(tag) }
-                            }
-                        }
-                    } label: {
-                        Label(tagFilter ?? "Tag", systemImage: "tag")
-                            .font(.footnote.weight(.semibold))
-                            .padding(.horizontal, 12).padding(.vertical, 7)
-                            .foregroundStyle(tagFilter != nil ? Color.white : Color.primary)
-                            .background(tagFilter != nil ? Color.accentColor : chipFill, in: Capsule())
-                    }
-                }
                 Button { showDatePicker = true } label: {
                     Label("Pick", systemImage: "calendar")
                         .font(.footnote.weight(.semibold))
@@ -333,6 +309,25 @@ struct MeetingListView: View {
             .padding(.trailing, 16)
         }
         .padding(.bottom, 6)
+    }
+
+    /// One chip per tag, on its own row under the dates. Only shown once some meeting has a tag.
+    @ViewBuilder private var tagChips: some View {
+        let tags = store.allTags
+        if !tags.isEmpty {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    Image(systemName: "tag").font(.footnote).foregroundStyle(.secondary)
+                    chip("All tags", selected: tagFilter == nil) { tagFilter = nil }
+                    ForEach(tags, id: \.self) { tag in
+                        chip(tag, selected: tagFilter == tag) { tagFilter = tagFilter == tag ? nil : tag }
+                    }
+                }
+                .padding(.leading, paper ? Paper.textX - 4 : 16)
+                .padding(.trailing, 16)
+            }
+            .padding(.bottom, 6)
+        }
     }
 
     private var chipFill: Color { paper ? Color.white.opacity(0.5) : Color(.secondarySystemGroupedBackground) }
@@ -365,6 +360,11 @@ struct MeetingListView: View {
                 .padding(.top, 6)
                 .padding(.bottom, 4)
                 .overlay(alignment: .bottom) { paperRule }
+            if !store.allTags.isEmpty {
+                tagChips
+                    .padding(.top, 6)
+                    .overlay(alignment: .bottom) { paperRule }
+            }
         }
     }
 
