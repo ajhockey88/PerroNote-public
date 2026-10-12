@@ -1,5 +1,6 @@
 import SwiftUI
 import UniformTypeIdentifiers
+import UIKit
 
 struct MeetingListView: View {
     @EnvironmentObject private var store: MeetingStore
@@ -15,6 +16,8 @@ struct MeetingListView: View {
     @State private var importBusy = false
     @State private var importError: String?
     @State private var tagFilter: String?
+    @State private var path = NavigationPath()
+    @State private var tagging: TagTarget?
     @ObservedObject private var recordRequest = RecordRequest.shared
     @GestureState(resetTransaction: Transaction(animation: MeetingListView.pageSpring)) private var swipe = PageSwipe()
     @AppStorage(AppAppearance.key) private var appearance = AppAppearance.system.rawValue
@@ -61,7 +64,7 @@ struct MeetingListView: View {
     }
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             GeometryReader { geo in
                 HStack(spacing: 0) {
                     ActionItemsView { showPage(actions: false) }
@@ -85,6 +88,7 @@ struct MeetingListView: View {
         }
         .fullScreenCover(isPresented: $showRecorder) { RecordingView() }
         .sheet(isPresented: $askingAll) { AskMeetingView(meeting: nil) }
+        .sheet(item: $tagging) { TagsView(meetingID: $0.id) }
         .fileImporter(isPresented: $importing, allowedContentTypes: [.audio, .audiovisualContent]) { result in
             guard case .success(let url) = result else { return }
             importBusy = true
@@ -385,13 +389,7 @@ struct MeetingListView: View {
                             .frame(width: Paper.marginX - 8, alignment: .trailing)
                             .onRules(.caption2, pitch: pitch)
                         ForEach(group.meetings) { meeting in
-                            NavigationLink(value: meeting.id) { MeetingRow(meeting: meeting, pitch: pitch) }
-                                .buttonStyle(.plain)
-                                .contextMenu {
-                                    Button(role: .destructive) { store.delete(meeting.id) } label: {
-                                        Label("Delete", systemImage: "trash")
-                                    }
-                                }
+                            openable(MeetingRow(meeting: meeting, pitch: pitch), meeting.id)
                                 .padding(.bottom, pitch)
                         }
                     }
@@ -440,7 +438,7 @@ struct MeetingListView: View {
                 ForEach(groups, id: \.day) { group in
                     Section {
                         ForEach(group.meetings) { meeting in
-                            NavigationLink(value: meeting.id) { MeetingRow(meeting: meeting) }
+                            openable(MeetingRow(meeting: meeting), meeting.id)
                                 .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
                                 .listRowBackground(Color.clear)
                                 .listRowSeparator(.hidden)
@@ -462,6 +460,19 @@ struct MeetingListView: View {
         }
     }
 
+    /// Tap opens the meeting; holding a finger on it opens its tags.
+    private func openable(_ row: some View, _ id: UUID) -> some View {
+        row
+            .contentShape(Rectangle())
+            .onTapGesture { path.append(id) }
+            .onLongPressGesture(minimumDuration: 0.4) {
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                tagging = TagTarget(id: id)
+            }
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction(named: "Tags") { tagging = TagTarget(id: id) }
+    }
+
     private func placeholder(icon: String, title: String, text: String) -> some View {
         VStack(spacing: 12) {
             Spacer()
@@ -474,6 +485,11 @@ struct MeetingListView: View {
         }
         .frame(maxWidth: .infinity)
     }
+}
+
+/// The meeting whose tags sheet is open.
+private struct TagTarget: Identifiable {
+    let id: UUID
 }
 
 /// A sideways drag between the meetings and the action items. `counts` is decided once, at the start of the drag.
