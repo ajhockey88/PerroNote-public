@@ -10,7 +10,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -62,3 +62,22 @@ jobs:
           path: PerroNote.ipa
           retention-days: 7
           if-no-files-found: error
+
+      - name: Read version
+        id: version
+        run: |
+          v=$(grep -m1 'CFBundleShortVersionString' project.yml | sed -E 's/.*"(.*)".*/\1/')
+          b=$(grep -m1 'CFBundleVersion:' project.yml | sed -E 's/.*"(.*)".*/\1/')
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          echo "build=$b" >> "$GITHUB_OUTPUT"
+
+      - name: Publish release
+        if: github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          target_commitish: ${{ github.sha }}
+          name: PerroNote ${{ steps.version.outputs.version }} (${{ steps.version.outputs.build }})
+          body: Unsigned IPA built from ${{ github.sha }}.
+          files: PerroNote.ipa
+          make_latest: true
