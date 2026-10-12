@@ -28,8 +28,53 @@ enum WidgetStore {
     static let actionsKind = "com.ajhockey88.perronote.actions"
     static let recordKind = "com.ajhockey88.perronote.record-circle"
 
-    private static var folder: URL? {
-        FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: group)
+    /// Which group names were found and whether the shared folder opened, for the widget's "Open PerroNote" note.
+    static var groupStatus: String {
+        (folder == nil ? "No shared folder. Tried: " : "Shared folder found. Tried: ") + groupCandidates().joined(separator: ", ")
+    }
+
+    private static let folder: URL? = {
+        for id in groupCandidates() {
+            if let url = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: id) { return url }
+        }
+        return nil
+    }()
+
+    /// SideStore and AltStore rename the group when they re-sign (adding your team ID), so look up the real name:
+    /// first in the installed provisioning profile, then in the app's own signature, then where older AltStore put it.
+    private static func groupCandidates() -> [String] {
+        var found: [String] = []
+        let bundle = Bundle.main.bundleURL
+        if let data = try? Data(contentsOf: bundle.appendingPathComponent("embedded.mobileprovision")) {
+            found += groups(inPlistWithin: data)
+        }
+        if let exe = Bundle.main.executableURL, let handle = try? FileHandle(forReadingFrom: exe) {
+            // The signature sits at the end of the file.
+            let size = (try? handle.seekToEnd()) ?? 0
+            try? handle.seek(toOffset: size > 4_000_000 ? size - 4_000_000 : 0)
+            if let tail = try? handle.readToEnd() { found += groups(inPlistWithin: tail) }
+            try? handle.close()
+        }
+        found += Bundle.main.object(forInfoDictionaryKey: "ALTAppGroups") as? [String] ?? []
+        let ours = found.filter { $0.lowercased().contains("perronote") }
+        var seen = Set<String>()
+        return (ours + [group]).filter { seen.insert($0).inserted }
+    }
+
+    /// Pulls the app group names out of each XML plist found inside some bytes.
+    private static func groups(inPlistWithin data: Data) -> [String] {
+        let start = Data("<?xml".utf8), end = Data("</plist>".utf8)
+        var out: [String] = []
+        var from = data.startIndex
+        while let s = data.range(of: start, in: from..<data.endIndex),
+              let e = data.range(of: end, in: s.upperBound..<data.endIndex) {
+            from = e.upperBound
+            guard let plist = try? PropertyListSerialization.propertyList(from: data[s.lowerBound..<e.upperBound], format: nil),
+                  let dict = plist as? [String: Any] else { continue }
+            let entitlements = dict["Entitlements"] as? [String: Any] ?? dict
+            out += entitlements["com.apple.security.application-groups"] as? [String] ?? []
+        }
+        return out
     }
     private static var snapshotURL: URL? { folder?.appendingPathComponent("widget-items.json") }
     /// Items ticked or unticked on the widget that the app hasn't picked up yet: id to done.

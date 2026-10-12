@@ -135,6 +135,10 @@ struct LargeActionItems: View {
                 }
             } else {
                 message("Open PerroNote", "Your action items show up here after you open the app.")
+                Text(WidgetStore.groupStatus)
+                    .font(.system(size: 9))
+                    .foregroundColor(.secondary)
+                    .padding(.top, 6)
             }
             Spacer(minLength: 6)
             Link(destination: URL(string: "perronote://record")!) {
