@@ -125,7 +125,11 @@ struct ActionItemsView: View {
     private var filterChips: some View {
         HStack(spacing: 6) {
             Menu {
-                Button { person = nil } label: { pickLabel("Everyone", on: person == nil) }
+                Button { person = nil } label: {
+                    Label { Text("Everyone").bold() } icon: {
+                        Image(systemName: person == nil ? "checkmark" : "person.3.fill")
+                    }
+                }
                 if !people.isEmpty { Divider() }
                 ForEach(people, id: \.self) { name in
                     Button { person = name } label: { pickLabel(name, on: person == name) }
@@ -160,6 +164,7 @@ struct ActionItemsView: View {
             }
         }
         .menuStyle(.button)
+        .menuOrder(.fixed)
         .buttonStyle(.borderless)
     }
 
