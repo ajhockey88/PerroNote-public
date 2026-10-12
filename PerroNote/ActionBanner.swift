@@ -94,7 +94,7 @@ struct ActionBanner: View {
 
     private var items: [ActionItem] {
         let people = BannerSettings.people(from: peopleRaw)
-        return store.meetings.flatMap { $0.notes?.actionItems ?? [] }.filter { item in
+        return store.allActionItems.filter { item in
             !item.task.isEmpty
                 && BannerSettings.matches(item, people: people, myName: myName)
                 && BannerSettings.matches(item, due: due)
@@ -103,7 +103,7 @@ struct ActionBanner: View {
 
     /// Whether there is anything to show at all.
     static func hasItems(_ store: MeetingStore) -> Bool {
-        store.meetings.contains { !($0.notes?.actionItems ?? []).isEmpty }
+        !store.looseItems.isEmpty || store.meetings.contains { !($0.notes?.actionItems ?? []).isEmpty }
     }
 
     var body: some View {
@@ -205,7 +205,7 @@ struct BannerPeopleView: View {
             out.append(clean)
         }
         peopleStore.people.forEach { add($0.name) }
-        for m in store.meetings { (m.notes?.actionItems ?? []).flatMap(actionOwners).forEach(add) }
+        store.allActionItems.flatMap(actionOwners).forEach(add)
         return out.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
     }
 

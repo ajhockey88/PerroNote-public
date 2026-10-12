@@ -28,16 +28,15 @@ struct PeopleView: View {
             (m.voices ?? []).compactMap(\.name).forEach(add)
             (m.notes?.actionItems ?? []).flatMap(actionOwners).forEach(add)
         }
+        store.looseItems.flatMap(actionOwners).forEach(add)
         return out.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
     }
 
     private func openCount(_ name: String) -> Int {
-        store.meetings.reduce(0) { sum, m in
-            sum + (m.notes?.actionItems ?? []).filter { item in
-                !item.done && !item.task.isEmpty
-                    && actionOwners(item).contains { $0.caseInsensitiveCompare(name) == .orderedSame }
-            }.count
-        }
+        store.allActionItems.filter { item in
+            !item.done && !item.task.isEmpty
+                && actionOwners(item).contains { $0.caseInsensitiveCompare(name) == .orderedSame }
+        }.count
     }
 
     var body: some View {
@@ -80,8 +79,10 @@ struct PersonView: View {
         !item.task.isEmpty && actionOwners(item).contains { $0.caseInsensitiveCompare(name) == .orderedSame }
     }
 
-    private var items: [(meeting: Meeting, item: ActionItem)] {
-        store.meetings.flatMap { m in (m.notes?.actionItems ?? []).filter(owns).map { (meeting: m, item: $0) } }
+    /// Their items from meetings, then the ones you added yourself (which have no meeting).
+    private var items: [(meeting: Meeting?, item: ActionItem)] {
+        store.meetings.flatMap { m in (m.notes?.actionItems ?? []).filter(owns).map { (meeting: Optional(m), item: $0) } }
+            + store.looseItems.filter(owns).map { (meeting: Meeting?.none, item: $0) }
     }
 
     private var meetings: [Meeting] {
@@ -157,7 +158,30 @@ struct PersonView: View {
         .frame(maxWidth: .infinity)
     }
 
-    private func row(_ item: ActionItem, in meeting: Meeting) -> some View {
+    @ViewBuilder
+    private func row(_ item: ActionItem, in meeting: Meeting?) -> some View {
+        if let meeting { meetingRow(item, in: meeting) } else { looseRow(item) }
+    }
+
+    private func looseRow(_ item: ActionItem) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Button { store.toggleLooseItem(item.id) } label: {
+                Image(systemName: item.done ? "checkmark.circle.fill" : "circle")
+                    .font(.title3)
+                    .foregroundStyle(item.done ? Color.green : Color.secondary)
+            }
+            .buttonStyle(.borderless)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(item.task)
+                    .strikethrough(item.done)
+                    .foregroundStyle(item.done ? .secondary : .primary)
+                Text(["Added by you", item.due.map { "due \($0)" }].compactMap { $0 }.joined(separator: " · "))
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func meetingRow(_ item: ActionItem, in meeting: Meeting) -> some View {
         HStack(alignment: .top, spacing: 12) {
             Button {
                 store.update(meeting.id) { m in

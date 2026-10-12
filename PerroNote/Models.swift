@@ -6,6 +6,8 @@ struct ActionItem: Codable, Identifiable, Hashable {
     var owner: String?
     var due: String?
     var done = false
+    /// When you added it yourself on the action items page. Nil for items from meeting notes.
+    var created: Date? = nil
 }
 
 /// One core discussion point with the details that were said about it.

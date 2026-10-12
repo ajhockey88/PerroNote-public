@@ -30,7 +30,7 @@ struct MeetingListView: View {
     private var ground: Color { paper ? Paper.canary : Color(.systemGroupedBackground) }
 
     private var openActionItems: Int {
-        store.meetings.reduce(0) { $0 + ($1.notes?.actionItems.filter { !$0.done && !$0.task.isEmpty }.count ?? 0) }
+        store.allActionItems.filter { !$0.done && !$0.task.isEmpty }.count
     }
 
     private var visible: [Meeting] {

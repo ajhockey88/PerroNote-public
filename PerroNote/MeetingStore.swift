@@ -3,11 +3,14 @@ import Foundation
 @MainActor
 final class MeetingStore: ObservableObject {
     @Published private(set) var meetings: [Meeting] = []
+    /// Action items you added yourself, not tied to any meeting.
+    @Published private(set) var looseItems: [ActionItem] = []
 
     private static var documents: URL {
         FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
     }
     private static var indexURL: URL { documents.appendingPathComponent("meetings.json") }
+    private static var looseURL: URL { documents.appendingPathComponent("action-items.json") }
 
     nonisolated static func audioURL(for fileName: String) -> URL {
         FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
@@ -16,6 +19,7 @@ final class MeetingStore: ObservableObject {
 
     init() {
         load()
+        loadLoose()
         // A run that was interrupted (app killed mid-processing) can be retried from the detail screen.
         for i in meetings.indices where meetings[i].isBusy {
             meetings[i].status = .failed
@@ -60,6 +64,32 @@ final class MeetingStore: ObservableObject {
         saveTask?.cancel()
         saveTask = nil
         save()
+    }
+
+    /// Every action item: from all meetings' notes, then the ones you added yourself.
+    var allActionItems: [ActionItem] {
+        meetings.flatMap { $0.notes?.actionItems ?? [] } + looseItems
+    }
+
+    func addLooseItem(_ item: ActionItem) {
+        looseItems.insert(item, at: 0)
+        saveLoose()
+    }
+
+    func toggleLooseItem(_ id: UUID) {
+        guard let i = looseItems.firstIndex(where: { $0.id == id }) else { return }
+        looseItems[i].done.toggle()
+        saveLoose()
+    }
+
+    func deleteLooseItem(_ id: UUID) {
+        looseItems.removeAll { $0.id == id }
+        saveLoose()
+    }
+
+    private func saveLoose() {
+        guard let data = try? JSONEncoder().encode(looseItems) else { return }
+        try? data.write(to: Self.looseURL, options: .atomic)
     }
 
     /// Every tag used on any meeting, A to Z.
@@ -262,6 +292,12 @@ final class MeetingStore: ObservableObject {
         guard let data = try? Data(contentsOf: Self.indexURL),
               let decoded = try? JSONDecoder().decode([Meeting].self, from: data) else { return }
         meetings = decoded
+    }
+
+    private func loadLoose() {
+        guard let data = try? Data(contentsOf: Self.looseURL),
+              let decoded = try? JSONDecoder().decode([ActionItem].self, from: data) else { return }
+        looseItems = decoded
     }
 
     private var saveTask: Task<Void, Never>?

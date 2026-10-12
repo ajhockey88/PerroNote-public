@@ -16,6 +16,7 @@ struct ActionItemsView: View {
     @State private var tagFilter: String?
     @State private var pickingDay = false
     @State private var pickedDay = Date()
+    @State private var adding = false
 
     private var filtering: Bool { person != nil || dateFilter != .all || tagFilter != nil }
 
@@ -23,12 +24,22 @@ struct ActionItemsView: View {
     private var people: [String] {
         var seen = Set<String>()
         var out: [String] = []
-        for meeting in store.meetings {
-            for item in meeting.notes?.actionItems ?? [] where !item.task.isEmpty {
-                for name in actionOwners(item) where seen.insert(name.lowercased()).inserted { out.append(name) }
-            }
+        for item in store.allActionItems where !item.task.isEmpty {
+            for name in actionOwners(item) where seen.insert(name.lowercased()).inserted { out.append(name) }
         }
         return out.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+    }
+
+    private func ownedByPick(_ item: ActionItem) -> Bool {
+        person.map { p in actionOwners(item).contains { $0.caseInsensitiveCompare(p) == .orderedSame } } ?? true
+    }
+
+    /// Items you added yourself that fit the filters. They have no meeting or tags, so a tag filter hides them.
+    private var loose: [ActionItem] {
+        guard tagFilter == nil else { return [] }
+        return store.looseItems.filter { item in
+            (showDone || !item.done) && ownedByPick(item) && dateFilter.contains(item.created ?? .distantPast)
+        }
     }
 
     private var groups: [(meeting: Meeting, items: [ActionItem])] {
@@ -61,6 +72,20 @@ struct ActionItemsView: View {
             list
         }
         .background(paper ? Color.clear : Color(.systemGroupedBackground))
+        .overlay(alignment: .bottomTrailing) {
+            Button { adding = true } label: {
+                Image(systemName: "plus")
+                    .font(.title2.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 56, height: 56)
+                    .background(Color.accentColor, in: Circle())
+                    .shadow(color: Color.accentColor.opacity(0.4), radius: 8, y: 4)
+            }
+            .padding(.trailing, 20)
+            .padding(.bottom, 12)
+            .accessibilityLabel("Add an action item")
+        }
+        .sheet(isPresented: $adding) { NewActionItemView(knownPeople: people) }
         .paperScreen()
     }
 
@@ -84,7 +109,7 @@ struct ActionItemsView: View {
 
     private var list: some View {
         List {
-            if groups.isEmpty {
+            if groups.isEmpty && loose.isEmpty {
                 Section {
                     VStack(spacing: 8) {
                         Image(systemName: "checklist").font(.largeTitle).foregroundStyle(.secondary)
@@ -100,6 +125,13 @@ struct ActionItemsView: View {
                 .listRowBackground(Color.clear)
             }
 
+            if !loose.isEmpty {
+                Section("Added by you") {
+                    ForEach(loose) { item in looseRow(item) }
+                        .onDelete { offsets in offsets.map { loose[$0].id }.forEach(store.deleteLooseItem) }
+                }
+            }
+
             ForEach(groups, id: \.meeting.id) { group in
                 Section {
                     ForEach(group.items) { item in
@@ -111,6 +143,7 @@ struct ActionItemsView: View {
             }
         }
         .scrollContentBackground(.hidden)
+        .safeAreaInset(edge: .bottom) { Color.clear.frame(height: 70) }
         .sheet(isPresented: $pickingDay) { dayPicker }
     }
 
@@ -200,6 +233,27 @@ struct ActionItemsView: View {
         .presentationDetents([.large])
     }
 
+    private func looseRow(_ item: ActionItem) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Button { store.toggleLooseItem(item.id) } label: {
+                Image(systemName: item.done ? "checkmark.circle.fill" : "circle")
+                    .font(.title3)
+                    .foregroundStyle(item.done ? Color.green : Color.secondary)
+            }
+            .buttonStyle(.borderless)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(item.task)
+                    .strikethrough(item.done)
+                    .foregroundStyle(item.done ? .secondary : .primary)
+                let meta = [item.owner, item.due.map { "due \($0)" }].compactMap { $0 }.joined(separator: " · ")
+                if !meta.isEmpty {
+                    Text(meta).font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+    }
+
     private func row(_ item: ActionItem, in meeting: Meeting) -> some View {
         HStack(alignment: .top, spacing: 12) {
             Button {
@@ -227,5 +281,76 @@ struct ActionItemsView: View {
                 }
             }
         }
+    }
+}
+
+/// Adds an action item by hand: what needs doing, who (optional) and a due date (optional).
+struct NewActionItemView: View {
+    let knownPeople: [String]
+    @EnvironmentObject private var store: MeetingStore
+    @Environment(\.dismiss) private var dismiss
+    @State private var task = ""
+    @State private var owner = ""
+    @State private var hasDue = true
+    @State private var due = Date()
+    @FocusState private var focused: Bool
+
+    private var canSave: Bool { !task.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField("What needs doing", text: $task, axis: .vertical)
+                        .lineLimit(1...4)
+                        .focused($focused)
+                    TextField("Who (optional)", text: $owner)
+                        .textInputAutocapitalization(.words)
+                        .autocorrectionDisabled()
+                    let matches = knownPeople.filter {
+                        !owner.isEmpty && $0.localizedCaseInsensitiveContains(owner) && $0.caseInsensitiveCompare(owner) != .orderedSame
+                    }
+                    if !matches.isEmpty {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack {
+                                ForEach(matches.prefix(6), id: \.self) { name in
+                                    Button(name) { owner = name }.buttonStyle(.bordered)
+                                }
+                            }
+                        }
+                    }
+                }
+                Section {
+                    Toggle("Due date", isOn: $hasDue.animation())
+                    if hasDue {
+                        DatePicker("Due", selection: $due, displayedComponents: .date)
+                            .datePickerStyle(.graphical)
+                            .labelsHidden()
+                    }
+                }
+            }
+            .paperScreen()
+            .navigationTitle("New action item")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Add", action: save).disabled(!canSave)
+                }
+            }
+            .onAppear { focused = true }
+        }
+    }
+
+    private func save() {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "EEE, MMM d, yyyy"
+        let who = owner.trimmingCharacters(in: .whitespacesAndNewlines)
+        store.addLooseItem(ActionItem(task: task.trimmingCharacters(in: .whitespacesAndNewlines),
+                                      owner: who.isEmpty ? nil : who,
+                                      due: hasDue ? f.string(from: due) : nil,
+                                      created: Date()))
+        dismiss()
     }
 }
