@@ -27,7 +27,7 @@ struct SettingsView: View {
                 } header: {
                     Text("Appearance")
                 } footer: {
-                    Text("System follows your iPhone's Light or Dark setting.")
+                    Text("System follows your iPhone's Light or Dark setting. Paper puts every screen except Settings on a yellow legal pad.")
                 }
                 Section {
                     SecureField("sk-ant-…", text: $apiKey)

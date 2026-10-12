@@ -52,6 +52,7 @@ struct ActionItemsView: View {
                 }
             }
         }
+        .paperScreen()
         .navigationTitle("Action items")
         .navigationBarTitleDisplayMode(.inline)
     }

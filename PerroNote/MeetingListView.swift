@@ -8,6 +8,11 @@ struct MeetingListView: View {
     @State private var query = ""
     @State private var filter: DateFilter = .all
     @FocusState private var searchFocused: Bool
+    @AppStorage(AppAppearance.key) private var appearance = AppAppearance.system.rawValue
+    @PaperPitch private var pitch
+
+    private var paper: Bool { appearance == AppAppearance.paper.rawValue }
+    private var ground: Color { paper ? Paper.canary : Color(.systemGroupedBackground) }
 
     private var openActionItems: Int {
         store.meetings.reduce(0) { $0 + ($1.notes?.actionItems.filter { !$0.done && !$0.task.isEmpty }.count ?? 0) }
@@ -46,14 +51,20 @@ struct MeetingListView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                header
+                if paper { paperHeader } else { header }
                 if !store.meetings.isEmpty {
-                    searchBar
-                    filterChips
+                    if paper {
+                        paperSearch
+                    } else {
+                        searchBar
+                        filterChips
+                    }
                 }
-                content
+                if paper && !visible.isEmpty { paperList } else { content }
             }
-            .background(Color(.systemGroupedBackground))
+            .background {
+                if paper { PaperBackground() } else { Color(.systemGroupedBackground) }
+            }
             .navigationDestination(for: UUID.self) { MeetingDetailView(id: $0) }
             .navigationDestination(for: ActionItemsRoute.self) { _ in ActionItemsView() }
             .toolbar(.hidden, for: .navigationBar)
@@ -71,7 +82,7 @@ struct MeetingListView: View {
                 .padding(.top, 30)
                 .frame(maxWidth: .infinity)
                 .background(
-                    LinearGradient(colors: [Color(.systemGroupedBackground).opacity(0), Color(.systemGroupedBackground)],
+                    LinearGradient(colors: [ground.opacity(0), ground],
                                    startPoint: .top, endPoint: .center)
                         .allowsHitTesting(false))
             }
@@ -88,41 +99,69 @@ struct MeetingListView: View {
                 .frame(width: 44, height: 44)
                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 1) {
-                Text("PerroNote")
-                    .font(.custom(CassetteView.markerFont, size: 28))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-                Text(subtitle)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
+            nameBlock
             Spacer(minLength: 8)
-            HStack(spacing: 16) {
-                NavigationLink(value: ActionItemsRoute()) {
-                    Image(systemName: "checklist")
-                        .overlay(alignment: .topTrailing) {
-                            if openActionItems > 0 {
-                                Text("\(min(openActionItems, 99))")
-                                    .font(.system(size: 10, weight: .bold))
-                                    .foregroundColor(.white)
-                                    .padding(.horizontal, 4)
-                                    .background(Color.red, in: Capsule())
-                                    .offset(x: 9, y: -7)
-                            }
-                        }
-                }
-                .accessibilityLabel("Action items")
-
-                Button { showSettings = true } label: { Image(systemName: "gearshape") }
-                    .accessibilityLabel("Settings")
-            }
-            .font(.title3)
+            headerButtons
         }
         .padding(.horizontal, 16)
         .padding(.top, 8)
         .padding(.bottom, 8)
+    }
+
+    /// On paper the icon sits in the left margin and the name starts where the writing does.
+    private var paperHeader: some View {
+        HStack(spacing: 0) {
+            Image("BrandIcon")
+                .resizable()
+                .frame(width: 44, height: 44)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .shadow(color: .black.opacity(0.2), radius: 1.5, y: 1)
+                .frame(width: Paper.marginX)
+                .accessibilityHidden(true)
+            nameBlock
+                .padding(.leading, Paper.textX - Paper.marginX)
+            Spacer(minLength: 8)
+            headerButtons
+        }
+        .padding(.trailing, 16)
+        .padding(.top, 8)
+        .padding(.bottom, 14)
+    }
+
+    private var nameBlock: some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text("PerroNote")
+                .font(.custom(CassetteView.markerFont, size: 28))
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+            Text(subtitle)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+    }
+
+    private var headerButtons: some View {
+        HStack(spacing: 16) {
+            NavigationLink(value: ActionItemsRoute()) {
+                Image(systemName: "checklist")
+                    .overlay(alignment: .topTrailing) {
+                        if openActionItems > 0 {
+                            Text("\(min(openActionItems, 99))")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 4)
+                                .background(Color.red, in: Capsule())
+                                .offset(x: 9, y: -7)
+                        }
+                    }
+            }
+            .accessibilityLabel("Action items")
+
+            Button { showSettings = true } label: { Image(systemName: "gearshape") }
+                .accessibilityLabel("Settings")
+        }
+        .font(.title3)
     }
 
     private var searchBar: some View {
@@ -159,12 +198,82 @@ struct MeetingListView: View {
                     Label("Pick", systemImage: "calendar")
                         .font(.footnote.weight(.semibold))
                         .padding(.horizontal, 12).padding(.vertical, 7)
-                        .background(Color(.secondarySystemGroupedBackground), in: Capsule())
+                        .background(chipFill, in: Capsule())
                 }
             }
-            .padding(.horizontal, 16)
+            .padding(.leading, paper ? Paper.textX - 4 : 16)
+            .padding(.trailing, 16)
         }
         .padding(.bottom, 6)
+    }
+
+    private var chipFill: Color { paper ? Color.white.opacity(0.5) : Color(.secondarySystemGroupedBackground) }
+
+    /// The search field and date chips written on the first lines of the pad.
+    private var paperSearch: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 0) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(.secondary)
+                    .frame(width: Paper.marginX - 10, alignment: .trailing)
+                    .padding(.trailing, Paper.textX - Paper.marginX + 10)
+                TextField("Search meetings and notes", text: $query)
+                    .focused($searchFocused)
+                    .submitLabel(.search)
+                    .autocorrectionDisabled()
+                if !query.isEmpty || searchFocused {
+                    Button {
+                        query = ""
+                        searchFocused = false
+                    } label: { Text("Cancel").font(.subheadline.weight(.semibold)) }
+                }
+            }
+            .padding(.trailing, 16)
+            .frame(height: pitch, alignment: .bottom)
+            .padding(.bottom, 3)
+            .overlay(alignment: .top) { Paper.topRule.frame(height: 1.5) }
+            .overlay(alignment: .bottom) { paperRule }
+            filterChips
+                .padding(.top, 6)
+                .padding(.bottom, 4)
+                .overlay(alignment: .bottom) { paperRule }
+        }
+    }
+
+    private var paperRule: some View { Color(uiColor: Paper.rule).frame(height: 1) }
+
+    /// Each meeting is its own sticky note, with its day and time in the margin and the pad's rules running behind.
+    private var paperList: some View {
+        GeometryReader { geo in
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    ForEach(groups, id: \.day) { group in
+                        Text(dayTitle(group.day))
+                            .font(.caption2.weight(.bold))
+                            .textCase(.uppercase)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.6)
+                            .frame(width: Paper.marginX - 8, alignment: .trailing)
+                            .onRules(.caption2, pitch: pitch)
+                        ForEach(group.meetings) { meeting in
+                            NavigationLink(value: meeting.id) { MeetingRow(meeting: meeting, pitch: pitch) }
+                                .buttonStyle(.plain)
+                                .contextMenu {
+                                    Button(role: .destructive) { store.delete(meeting.id) } label: {
+                                        Label("Delete", systemImage: "trash")
+                                    }
+                                }
+                                .padding(.bottom, pitch)
+                        }
+                    }
+                    Color.clear.frame(height: pitch * 3)
+                }
+                .padding(.top, pitch + Paper.lead(pitch))
+                .frame(maxWidth: .infinity, minHeight: geo.size.height, alignment: .topLeading)
+                .background(alignment: .top) { PaperRules(pitch: pitch) }
+            }
+        }
     }
 
     private func chip(_ title: String, selected: Bool, action: @escaping () -> Void) -> some View {
@@ -173,7 +282,7 @@ struct MeetingListView: View {
                 .font(.footnote.weight(.semibold))
                 .padding(.horizontal, 12).padding(.vertical, 7)
                 .foregroundStyle(selected ? Color.white : Color.primary)
-                .background(selected ? Color.accentColor : Color(.secondarySystemGroupedBackground), in: Capsule())
+                .background(selected ? Color.accentColor : chipFill, in: Capsule())
         }
         .buttonStyle(.plain)
     }
@@ -279,6 +388,8 @@ private struct DateFilterSheet: View {
 
 private struct MeetingRow: View {
     let meeting: Meeting
+    /// Set on paper: the row becomes a sticky note that fills whole rules.
+    var pitch: CGFloat? = nil
 
     private var people: [String] { meeting.attendeeNames ?? meeting.notes?.attendees ?? [] }
 
@@ -293,6 +404,51 @@ private struct MeetingRow: View {
     }
 
     var body: some View {
+        if let pitch { note(pitch) } else { card }
+    }
+
+    private func note(_ pitch: CGFloat) -> some View {
+        let style = StickyStyle(meeting.id)
+        return HStack(alignment: .firstTextBaseline, spacing: 0) {
+            Text(meeting.date.formatted(date: .omitted, time: .shortened))
+                .font(.caption.weight(.bold))
+                .foregroundStyle(Color.accentColor)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+                .frame(width: Paper.marginX - 8, alignment: .trailing)
+                .padding(.trailing, 16)
+            VStack(alignment: .leading, spacing: 0) {
+                Text(meeting.title).font(.headline).lineLimit(1)
+                    .onRules(.headline, pitch: pitch)
+                if meeting.status == .done, let n = meeting.notes {
+                    if !n.summary.isEmpty {
+                        Text(n.summary).font(.subheadline).foregroundStyle(.secondary).lineLimit(2)
+                            .onRules(.subheadline, pitch: pitch)
+                    }
+                    HStack(spacing: 8) {
+                        if !people.isEmpty { avatars(ring: style.color) }
+                        Text(formatDuration(meeting.duration)).font(.caption).foregroundStyle(.secondary)
+                        Spacer(minLength: 0)
+                        openBadge(n)
+                            .padding(.trailing, style.fold == .bottomTrailing ? 12 : 0)
+                    }
+                    .frame(height: pitch)
+                } else {
+                    statusLabel.frame(height: pitch)
+                    Text(formatDuration(meeting.duration)).font(.caption).foregroundStyle(.secondary)
+                        .frame(height: pitch)
+                }
+            }
+            .padding(.horizontal, 12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .snapToRules(pitch)
+            .background(StickyNote(style: style).padding(.vertical, -4))
+            .rotationEffect(.degrees(style.tilt))
+            .padding(.trailing, 12)
+        }
+    }
+
+    private var card: some View {
         HStack(alignment: .top, spacing: 10) {
             Text(meeting.date.formatted(date: .omitted, time: .shortened))
                 .font(.caption.weight(.bold))
@@ -306,7 +462,7 @@ private struct MeetingRow: View {
                         Text(n.summary).font(.caption).foregroundStyle(.secondary).lineLimit(2)
                     }
                     HStack(spacing: 8) {
-                        if !people.isEmpty { avatars }
+                        if !people.isEmpty { avatars(ring: Color(.secondarySystemGroupedBackground)) }
                         Text(formatDuration(meeting.duration)).font(.caption).foregroundStyle(.secondary)
                         Spacer(minLength: 0)
                         openBadge(n)
@@ -322,7 +478,7 @@ private struct MeetingRow: View {
         .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
-    private var avatars: some View {
+    private func avatars(ring: Color) -> some View {
         HStack(spacing: -5) {
             ForEach(Array(people.prefix(3).enumerated()), id: \.offset) { _, name in
                 Text(initials(name))
@@ -330,7 +486,7 @@ private struct MeetingRow: View {
                     .foregroundStyle(.white)
                     .frame(width: 20, height: 20)
                     .background(color(name), in: Circle())
-                    .overlay(Circle().stroke(Color(.secondarySystemGroupedBackground), lineWidth: 1.5))
+                    .overlay(Circle().stroke(ring, lineWidth: 1.5))
             }
         }
     }

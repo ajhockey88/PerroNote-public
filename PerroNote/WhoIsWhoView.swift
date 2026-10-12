@@ -77,6 +77,7 @@ struct WhoIsWhoView: View {
                     }
                 }
             }
+            .paperScreen()
             .navigationTitle(meeting?.hasVoices == true ? "Who's who" : "Attendees")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

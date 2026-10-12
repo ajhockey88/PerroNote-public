@@ -124,6 +124,7 @@ struct AskMeetingView: View {
                 }
                 .padding(10)
             }
+            .paperScreen()
             .navigationTitle("Ask This Meeting")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }

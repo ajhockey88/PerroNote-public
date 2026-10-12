@@ -63,6 +63,8 @@ struct RecordingView: View {
             }
             .padding(.bottom, 32)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .paperScreen()
         .task {
             guard !started else { return }
             started = true

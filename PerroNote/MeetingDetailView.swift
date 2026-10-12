@@ -26,6 +26,14 @@ struct MeetingDetailView: View {
     @State private var showUsage = false
     @State private var askingVoices = false
     @State private var voiceCount = 0
+    @AppStorage(AppAppearance.key) private var appearance = AppAppearance.system.rawValue
+    @PaperPitch private var pitch
+    @State private var headerHeight: CGFloat = 0
+    @State private var viewHeight: CGFloat = 0
+
+    private var paper: Bool { appearance == AppAppearance.paper.rawValue }
+    /// The rule spacing on paper, and 0 otherwise, which leaves text and rows as they are.
+    private var rp: CGFloat { paper ? pitch : 0 }
 
     var body: some View {
         Group {
@@ -41,29 +49,43 @@ struct MeetingDetailView: View {
     @ViewBuilder
     private func content(_ meeting: Meeting) -> some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                titleBlock(meeting)
-                if showPlayer && !editing { playerBar(meeting) }
-                speakersCard(meeting)
-                if meeting.isBusy {
-                    HStack(spacing: 10) {
-                        ProgressView()
-                        Text(busyText(meeting.status))
-                            .foregroundStyle(.secondary)
+            if paper {
+                paperPage(meeting, minHeight: viewHeight)
+            } else {
+                VStack(alignment: .leading, spacing: 16) {
+                    titleBlock(meeting)
+                    if showPlayer && !editing { playerBar(meeting) }
+                    speakersCard(meeting)
+                    if meeting.isBusy {
+                        HStack(spacing: 10) {
+                            ProgressView()
+                            Text(busyText(meeting.status))
+                                .foregroundStyle(.secondary)
+                        }
                     }
-                }
-                if let error = meeting.errorMessage {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Label(error, systemImage: "exclamationmark.triangle").foregroundStyle(.red)
-                        Button("Try again") { Task { await store.process(id) } }
-                            .buttonStyle(.bordered)
+                    if let error = meeting.errorMessage {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Label(error, systemImage: "exclamationmark.triangle").foregroundStyle(.red)
+                            Button("Try again") { Task { await store.process(id) } }
+                                .buttonStyle(.bordered)
+                        }
                     }
+                    notesBody(meeting)
                 }
-                notesBody(meeting)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding()
+                .padding(.bottom, meeting.notes != nil ? 90 : 0)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding()
-            .padding(.bottom, meeting.notes != nil ? 90 : 0)
+        }
+        .background {
+            GeometryReader { g in
+                Color.clear
+                    .onAppear { viewHeight = g.size.height }
+                    .onChange(of: g.size.height) { viewHeight = $0 }
+            }
+        }
+        .background {
+            if paper { PaperBackground() }
         }
         .overlay(alignment: .bottom) {
             if meeting.notes != nil { bottomBar(meeting) }
@@ -343,6 +365,80 @@ struct MeetingDetailView: View {
         }
     }
 
+    /// The meeting on a legal pad: title, date and buttons in the open header, the notes on the rules below.
+    private func paperPage(_ meeting: Meeting, minHeight: CGFloat) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            paperTitle(meeting)
+                .padding(.leading, Paper.textX)
+                .padding(.trailing, 16)
+                .padding(.top, 2)
+                .padding(.bottom, 10)
+                .background(GeometryReader { g in
+                    Color.clear
+                        .onAppear { headerHeight = g.size.height }
+                        .onChange(of: g.size.height) { headerHeight = $0 }
+                })
+            VStack(alignment: .leading, spacing: 0) {
+                if showPlayer && !editing { playerBar(meeting).snapToRules(pitch) }
+                speakersCard(meeting).snapToRules(pitch)
+                if meeting.isBusy {
+                    HStack(spacing: 10) {
+                        ProgressView()
+                        Text(busyText(meeting.status))
+                            .foregroundStyle(.secondary)
+                            .onRules(.body, pitch: pitch)
+                    }
+                    .snapToRules(pitch)
+                }
+                if let error = meeting.errorMessage {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Label(error, systemImage: "exclamationmark.triangle").foregroundStyle(.red)
+                        Button("Try again") { Task { await store.process(id) } }
+                            .buttonStyle(.bordered)
+                    }
+                    .snapToRules(pitch)
+                }
+                notesBody(meeting)
+            }
+            .padding(.leading, Paper.textX)
+            .padding(.trailing, 16)
+            .padding(.top, Paper.lead(pitch))
+            .padding(.bottom, meeting.notes != nil ? 90 : 0)
+        }
+        .frame(maxWidth: .infinity, minHeight: minHeight, alignment: .topLeading)
+        .background(alignment: .top) { PaperRules(pitch: pitch, from: headerHeight, topLine: true) }
+    }
+
+    private func paperTitle(_ meeting: Meeting) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Button {
+                newTitle = meeting.title
+                renaming = true
+            } label: {
+                Text(meeting.title)
+                    .font(.title2.weight(.bold))
+                    .multilineTextAlignment(.leading)
+                    .lineLimit(typeSize >= .accessibility1 ? 3 : 2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.plain)
+            HStack(spacing: 8) {
+                Text(dateLine(meeting))
+                    .font(.footnote).foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                Spacer(minLength: 4)
+                titleButtons(meeting)
+            }
+        }
+    }
+
+    private func dateLine(_ meeting: Meeting) -> String {
+        "\(meeting.date.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())) \u{00B7} \(meeting.date.formatted(date: .omitted, time: .shortened)) \u{00B7} \(formatDuration(meeting.duration))"
+    }
+
+    private var buttonFill: Color { paper ? Color.white.opacity(0.5) : Color(.secondarySystemGroupedBackground) }
+
     private func titleBlock(_ meeting: Meeting) -> some View {
         let name = Button {
             newTitle = meeting.title
@@ -355,7 +451,7 @@ struct MeetingDetailView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
         .buttonStyle(.plain)
-        let date = Text("\(meeting.date.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())) \u{00B7} \(meeting.date.formatted(date: .omitted, time: .shortened)) \u{00B7} \(formatDuration(meeting.duration))")
+        let date = Text(dateLine(meeting))
             .font(.footnote).foregroundStyle(.secondary)
             .lineLimit(typeSize >= .accessibility1 ? 2 : 1)
         return Group {
@@ -384,7 +480,7 @@ struct MeetingDetailView: View {
                 Image(systemName: "waveform")
                     .frame(width: 34, height: 34)
                     .foregroundStyle(showPlayer ? Color.white : Color.accentColor)
-                    .background(showPlayer ? Color.accentColor : Color(.secondarySystemGroupedBackground), in: Circle())
+                    .background(showPlayer ? Color.accentColor : buttonFill, in: Circle())
             }
             .accessibilityLabel("Recording")
         }
@@ -393,7 +489,7 @@ struct MeetingDetailView: View {
                 Image(systemName: "doc.text")
                     .frame(width: 34, height: 34)
                     .foregroundStyle(Color.accentColor)
-                    .background(Color(.secondarySystemGroupedBackground), in: Circle())
+                    .background(buttonFill, in: Circle())
             }
             .accessibilityLabel("Transcript")
         }
@@ -422,7 +518,7 @@ struct MeetingDetailView: View {
             .accessibilityLabel("Download recording")
         }
         .padding(.horizontal, 12).padding(.vertical, 8)
-        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .background(buttonFill, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     private func bottomBar(_ meeting: Meeting) -> some View {
@@ -438,7 +534,7 @@ struct MeetingDetailView: View {
                         Label("Ask", systemImage: "bubble.left.and.text.bubble.right")
                             .font(.subheadline.weight(.semibold))
                             .padding(.horizontal, 18).padding(.vertical, 13)
-                            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            .background(paper ? Color.white.opacity(0.6) : Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                     }
                     .buttonStyle(.plain)
                     Button {
@@ -457,7 +553,8 @@ struct MeetingDetailView: View {
         }
         .frame(maxWidth: .infinity)
         .background(
-            LinearGradient(colors: [Color(.systemBackground).opacity(0), Color(.systemBackground)],
+            LinearGradient(colors: [(paper ? Paper.canary : Color(.systemBackground)).opacity(0),
+                                    paper ? Paper.canary : Color(.systemBackground)],
                            startPoint: .top, endPoint: .center))
     }
 
@@ -476,23 +573,24 @@ struct MeetingDetailView: View {
             }
             editableList("Decisions", \.decisions, notes, timePrefix: "d:")
             if editing || !notes.actionItems.isEmpty { section("Action items") {
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: paper ? 0 : 12) {
                     ForEach(notes.actionItems) { item in actionItemEditor(item) }
                     addButton("Add action item") {
                         store.updateNotes(id) { $0.actionItems.append(ActionItem(task: "")) }
                     }
+                    .snapToRules(rp)
                 }
             } }
             editableList("Open questions", \.openQuestions, notes)
             editableList("Next steps", \.nextSteps, notes)
         } else if !meeting.isBusy && meeting.errorMessage == nil {
-            Text("No notes yet.").foregroundStyle(.secondary)
+            Text("No notes yet.").foregroundStyle(.secondary).onRules(.body, pitch: rp)
         }
     }
 
     /// Plain text when reading; a gray field when editing.
     @ViewBuilder
-    private func editor(_ text: Binding<String>, _ prompt: String) -> some View {
+    private func editor(_ text: Binding<String>, _ prompt: String, style: UIFont.TextStyle = .body) -> some View {
         if editing {
             TextField(prompt, text: text, axis: .vertical)
                 .padding(8)
@@ -501,6 +599,7 @@ struct MeetingDetailView: View {
             Text(text.wrappedValue)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .fixedSize(horizontal: false, vertical: true)
+                .onRules(style, pitch: rp)
         }
     }
 
@@ -527,7 +626,7 @@ struct MeetingDetailView: View {
                 .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
-            .padding(.top, 3)
+            .padding(.top, paper ? 0 : 3)
             .accessibilityLabel(isPlayingNow ? "Pause" : "Play from \(formatDuration(t))")
         }
     }
@@ -567,10 +666,10 @@ struct MeetingDetailView: View {
                               _ notes: MeetingNotes, timePrefix: String? = nil) -> some View {
         if editing || !notes[keyPath: keyPath].filter({ !$0.isEmpty }).isEmpty {
             section(title) {
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: paper ? 0 : 6) {
                     ForEach(Array(notes[keyPath: keyPath].indices), id: \.self) { index in
-                        HStack(alignment: .top, spacing: 8) {
-                            Text("\u{2022}").foregroundStyle(.secondary).padding(.top, editing ? 8 : 0)
+                        HStack(alignment: paper ? .firstTextBaseline : .top, spacing: paper ? 0 : 8) {
+                            bullet("\u{2022}")
                             editor(itemBinding(keyPath, index), title)
                             if let timePrefix { timeButton("\(timePrefix)\(index)") }
                             removeButton {
@@ -582,8 +681,10 @@ struct MeetingDetailView: View {
                                 }
                             }
                         }
+                        .snapToRules(rp)
                     }
                     addButton("Add") { store.updateNotes(id) { $0[keyPath: keyPath].append("") } }
+                        .snapToRules(rp)
                 }
             }
         }
@@ -597,22 +698,23 @@ struct MeetingDetailView: View {
             }
         }
         return section("Discussion") {
-            VStack(alignment: .leading, spacing: editing ? 16 : 14) {
+            VStack(alignment: .leading, spacing: paper ? 0 : (editing ? 16 : 14)) {
                 ForEach(topics) { t in
-                    VStack(alignment: .leading, spacing: 6) {
+                    VStack(alignment: .leading, spacing: paper ? 0 : 6) {
                         HStack(alignment: .top) {
                             editor(Binding(
                                 get: { store.meeting(id)?.notes?.topics?.first { $0.id == t.id }?.title ?? "" },
-                                set: { v in topic(t.id) { $0.title = v } }), "Topic")
+                                set: { v in topic(t.id) { $0.title = v } }), "Topic", style: .subheadline)
                                 .font(.subheadline.weight(.semibold))
                             removeButton("Remove topic") {
                                 store.updateNotes(id) { $0.topics?.removeAll { $0.id == t.id } }
                             }
                         }
+                        .snapToRules(rp)
                         ForEach(Array(t.points.indices), id: \.self) { index in
-                            VStack(alignment: .leading, spacing: 4) {
-                                HStack(alignment: .top, spacing: 8) {
-                                    Text("\u{2022}").foregroundStyle(.secondary).padding(.top, editing ? 8 : 0)
+                            VStack(alignment: .leading, spacing: paper ? 0 : 4) {
+                                HStack(alignment: paper ? .firstTextBaseline : .top, spacing: paper ? 0 : 8) {
+                                    bullet("\u{2022}")
                                     editor(Binding(
                                         get: {
                                             let p = store.meeting(id)?.notes?.topics?.first { $0.id == t.id }?.points ?? []
@@ -630,9 +732,10 @@ struct MeetingDetailView: View {
                                         }
                                     }
                                 }
+                                .snapToRules(rp)
                                 ForEach(Array(t.subPoints(at: index).indices), id: \.self) { sIndex in
-                                    HStack(alignment: .top, spacing: 8) {
-                                        Text("\u{2013}").foregroundStyle(.secondary).padding(.top, editing ? 8 : 0)
+                                    HStack(alignment: paper ? .firstTextBaseline : .top, spacing: 8) {
+                                        Text("\u{2013}").foregroundStyle(.secondary).padding(.top, editing && !paper ? 8 : 0)
                                         editor(Binding(
                                             get: {
                                                 let s = store.meeting(id)?.notes?.topics?.first { $0.id == t.id }?.subPoints(at: index) ?? []
@@ -641,7 +744,7 @@ struct MeetingDetailView: View {
                                             set: { v in topic(t.id) {
                                                 $0.padSubs()
                                                 if $0.subs?[index].indices.contains(sIndex) == true { $0.subs?[index][sIndex] = v }
-                                            } }), "Sub-point")
+                                            } }), "Sub-point", style: .subheadline)
                                             .font(.subheadline)
                                             .foregroundStyle(editing ? Color.primary : Color.secondary)
                                         removeButton("Remove sub-point") {
@@ -652,6 +755,7 @@ struct MeetingDetailView: View {
                                         }
                                     }
                                     .padding(.leading, 18)
+                                    .snapToRules(rp)
                                 }
                                 if editing {
                                     Button {
@@ -660,15 +764,18 @@ struct MeetingDetailView: View {
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
                                         .padding(.leading, 22)
+                                        .snapToRules(rp)
                                 }
                             }
                         }
                         addButton("Add point") { topic(t.id) { $0.points.append("") } }
+                            .snapToRules(rp)
                     }
                 }
                 addButton("Add topic") {
                     store.updateNotes(id) { $0.topics = ($0.topics ?? []) + [DiscussionTopic(title: "", points: [""])] }
                 }
+                .snapToRules(rp)
             }
         }
     }
@@ -693,7 +800,7 @@ struct MeetingDetailView: View {
                 }
             })
         let who = [item.owner, item.due.map { "due \($0)" }].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " \u{00B7} ")
-        return HStack(alignment: .top, spacing: 10) {
+        return HStack(alignment: paper ? .firstTextBaseline : .top, spacing: paper ? 0 : 10) {
             Button {
                 store.update(id) { m in
                     if let i = m.notes?.actionItems.firstIndex(where: { $0.id == item.id }) { m.notes?.actionItems[i].done.toggle() }
@@ -704,8 +811,11 @@ struct MeetingDetailView: View {
                     .foregroundStyle(item.done ? Color.green : Color.secondary)
             }
             .buttonStyle(.plain)
-            .padding(.top, editing ? 6 : 0)
-            VStack(alignment: .leading, spacing: 4) {
+            .padding(.top, editing && !paper ? 6 : 0)
+            .fixedSize()
+            .frame(width: paper ? 0 : nil, alignment: .trailing)
+            .offset(x: paper ? -16 : 0)
+            VStack(alignment: .leading, spacing: paper ? 0 : 4) {
                 editor(task, "Action item")
                 if editing {
                     HStack(spacing: 8) {
@@ -716,7 +826,7 @@ struct MeetingDetailView: View {
                     }
                 } else {
                     HStack(spacing: 6) {
-                        if !who.isEmpty { Text(who).font(.caption).foregroundStyle(.secondary) }
+                        if !who.isEmpty { Text(who).font(.caption).foregroundStyle(.secondary).onRules(.caption1, pitch: rp) }
                         timeButton("a:\(item.id)")
                     }
                 }
@@ -725,16 +835,30 @@ struct MeetingDetailView: View {
                 store.updateNotes(id) { $0.actionItems.removeAll { $0.id == item.id } }
             }
         }
+        .snapToRules(rp)
+    }
+
+    /// A list mark. On paper it hangs in the left margin, like a bullet written before the red lines.
+    private func bullet(_ mark: String) -> some View {
+        Text(mark)
+            .foregroundStyle(.secondary)
+            .padding(.top, editing && !paper ? 8 : 0)
+            .fixedSize()
+            .frame(width: paper ? 0 : nil, alignment: .trailing)
+            .offset(x: paper ? -18 : 0)
     }
 
     private func section<C: View>(_ title: String, @ViewBuilder _ body: () -> C) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: paper ? 0 : 8) {
             Text(title)
                 .font(.caption.weight(.bold))
                 .textCase(.uppercase)
                 .foregroundStyle(.secondary)
+                .onRules(.caption1, pitch: rp)
             body()
         }
+        .snapToRules(rp)
+        .padding(.bottom, rp)
     }
 }
 
@@ -751,18 +875,62 @@ struct TranscriptScreen: View {
     @EnvironmentObject private var store: MeetingStore
     @StateObject private var player = AudioPlayer()
     @State private var playingLine: UUID?
+    @AppStorage(AppAppearance.key) private var appearance = AppAppearance.system.rawValue
+    @PaperPitch private var pitch
+    @State private var headerHeight: CGFloat = 0
+    @State private var viewHeight: CGFloat = 0
+
+    private var paper: Bool { appearance == AppAppearance.paper.rawValue }
+    private var rp: CGFloat { paper ? pitch : 0 }
 
     var body: some View {
         ScrollView {
             if let meeting = store.meeting(id) {
-                VStack(alignment: .leading, spacing: 14) {
-                    Text("Transcript").font(.title2.weight(.bold))
-                    Text(meeting.title).font(.footnote).foregroundStyle(.secondary)
-                    content(meeting)
+                if paper {
+                    VStack(alignment: .leading, spacing: 0) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Transcript").font(.title2.weight(.bold))
+                            Text(meeting.title).font(.footnote).foregroundStyle(.secondary)
+                        }
+                        .padding(.leading, Paper.textX)
+                        .padding(.trailing, 16)
+                        .padding(.top, 2)
+                        .padding(.bottom, 10)
+                        .background(GeometryReader { g in
+                            Color.clear
+                                .onAppear { headerHeight = g.size.height }
+                                .onChange(of: g.size.height) { headerHeight = $0 }
+                        })
+                        VStack(alignment: .leading, spacing: 0) {
+                            content(meeting)
+                        }
+                        .padding(.leading, Paper.textX)
+                        .padding(.trailing, 16)
+                        .padding(.top, Paper.lead(pitch))
+                        .padding(.bottom, pitch)
+                    }
+                    .frame(maxWidth: .infinity, minHeight: viewHeight, alignment: .topLeading)
+                    .background(alignment: .top) { PaperRules(pitch: pitch, from: headerHeight, topLine: true) }
+                } else {
+                    VStack(alignment: .leading, spacing: 14) {
+                        Text("Transcript").font(.title2.weight(.bold))
+                        Text(meeting.title).font(.footnote).foregroundStyle(.secondary)
+                        content(meeting)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding()
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding()
             }
+        }
+        .background {
+            GeometryReader { g in
+                Color.clear
+                    .onAppear { viewHeight = g.size.height }
+                    .onChange(of: g.size.height) { viewHeight = $0 }
+            }
+        }
+        .background {
+            if paper { PaperBackground() }
         }
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
@@ -774,7 +942,7 @@ struct TranscriptScreen: View {
         let lines = meeting.hasVoices ? (meeting.lines ?? []) : (meeting.timeline ?? [])
         if !lines.isEmpty {
             ForEach(lines) { line in
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: paper ? 0 : 2) {
                     HStack {
                         if line.speaker != nil {
                             Text(meeting.label(for: line.speaker))
@@ -803,13 +971,16 @@ struct TranscriptScreen: View {
                             .buttonStyle(.plain)
                         }
                     }
+                    .snapToRules(rp)
                     Text(line.text).textSelection(.enabled)
+                        .onRules(.body, pitch: rp)
+                        .snapToRules(rp)
                 }
             }
         } else if let transcript = meeting.transcript, !transcript.isEmpty {
-            Text(transcript).textSelection(.enabled)
+            Text(transcript).textSelection(.enabled).onRules(.body, pitch: rp)
         } else {
-            Text("No speech was found.").foregroundStyle(.secondary)
+            Text("No speech was found.").foregroundStyle(.secondary).onRules(.body, pitch: rp)
         }
     }
 }

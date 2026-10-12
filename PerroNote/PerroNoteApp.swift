@@ -1,15 +1,15 @@
 import SwiftUI
 
-/// The look you chose in Settings. System follows the iPhone's Light or Dark setting.
+/// The look you chose in Settings. System follows the iPhone's Light or Dark setting; Paper is a yellow legal pad.
 enum AppAppearance: String, CaseIterable, Identifiable {
-    case system, light, dark
+    case system, light, dark, paper
     static let key = "appearance"
     var id: String { rawValue }
     var title: String { rawValue.capitalized }
     var scheme: ColorScheme? {
         switch self {
         case .system: return nil
-        case .light: return .light
+        case .light, .paper: return .light
         case .dark: return .dark
         }
     }
