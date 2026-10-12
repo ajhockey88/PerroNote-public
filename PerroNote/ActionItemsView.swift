@@ -47,6 +47,17 @@ struct ActionItemsView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
+            VStack(spacing: 0) {
+                Picker("Show", selection: $showDone) {
+                    Text("Open").tag(false)
+                    Text("All").tag(true)
+                }
+                .pickerStyle(.segmented)
+                filters.noPageSwipe()
+            }
+            .padding(.leading, paper ? Paper.textX - 4 : 16)
+            .padding(.trailing, 16)
+            .padding(.bottom, 4)
             list
         }
         .background(paper ? Color.clear : Color(.systemGroupedBackground))
@@ -73,18 +84,6 @@ struct ActionItemsView: View {
 
     private var list: some View {
         List {
-            Section {
-                Picker("Show", selection: $showDone) {
-                    Text("Open").tag(false)
-                    Text("All").tag(true)
-                }
-                .pickerStyle(.segmented)
-                filters
-            }
-            .listRowBackground(Color.clear)
-            .listRowInsets(EdgeInsets())
-            .listRowSeparator(.hidden)
-
             if groups.isEmpty {
                 Section {
                     VStack(spacing: 8) {

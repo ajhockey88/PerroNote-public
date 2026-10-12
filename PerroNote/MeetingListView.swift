@@ -18,6 +18,8 @@ struct MeetingListView: View {
     @State private var tagFilter: String?
     @State private var path = NavigationPath()
     @State private var tagging: TagTarget?
+    /// Where the scrolling chip rows are; a sideways drag that starts on one scrolls the chips, never the page.
+    @State private var noSwipeZones: [CGRect] = []
     @ObservedObject private var recordRequest = RecordRequest.shared
     @GestureState(resetTransaction: Transaction(animation: MeetingListView.pageSpring)) private var swipe = PageSwipe()
     @AppStorage(AppAppearance.key) private var appearance = AppAppearance.system.rawValue
@@ -81,6 +83,8 @@ struct MeetingListView: View {
                 .contentShape(Rectangle())
                 .simultaneousGesture(pageSwipe(width: geo.size.width))
             }
+            .coordinateSpace(name: PageSwipeZones.space)
+            .onPreferenceChange(PageSwipeZones.self) { noSwipeZones = $0 }
             .navigationDestination(for: UUID.self) { MeetingDetailView(id: $0) }
             .navigationDestination(for: PeopleRoute.self) { _ in PeopleView() }
             .navigationDestination(for: PersonRoute.self) { PersonView(name: $0.name) }
@@ -130,23 +134,27 @@ struct MeetingListView: View {
     /// Swiping right on the meetings shows the action items to their left; swiping left there comes back.
     /// Only a mostly sideways drag in the open direction counts, so scrolling and swipe-to-delete still work.
     private func pageSwipe(width: CGFloat) -> some Gesture {
-        DragGesture(minimumDistance: 20)
+        DragGesture(minimumDistance: 20, coordinateSpace: .named(PageSwipeZones.space))
             .updating($swipe) { value, state, _ in
                 if state.counts == nil {
-                    state.counts = swipeCounts(value.translation)
+                    state.counts = swipeCounts(value.translation) && !onChips(value.startLocation)
                 }
                 guard state.counts == true else { return }
                 let dx = value.translation.width
                 state.x = showingActions ? min(0, dx) : max(0, dx)
             }
             .onEnded { value in
-                guard swipeCounts(value.translation) else { return }
+                guard swipeCounts(value.translation), !onChips(value.startLocation) else { return }
                 let dx = value.translation.width
                 let flung = value.predictedEndTranslation.width
                 let go = showingActions ? (dx < -width / 3 || flung < -width / 2)
                                         : (dx > width / 3 || flung > width / 2)
                 if go { showPage(actions: !showingActions) }
             }
+    }
+
+    private func onChips(_ point: CGPoint) -> Bool {
+        noSwipeZones.contains { $0.insetBy(dx: 0, dy: -6).contains(point) }
     }
 
     private func swipeCounts(_ t: CGSize) -> Bool {
@@ -312,6 +320,7 @@ struct MeetingListView: View {
             .padding(.leading, paper ? Paper.textX - 4 : 16)
             .padding(.trailing, 16)
         }
+        .noPageSwipe()
         .padding(.bottom, 6)
     }
 
@@ -330,6 +339,7 @@ struct MeetingListView: View {
                 .padding(.leading, paper ? Paper.textX - 4 : 16)
                 .padding(.trailing, 16)
             }
+            .noPageSwipe()
             .padding(.bottom, 6)
         }
     }
@@ -484,6 +494,22 @@ struct MeetingListView: View {
             Spacer()
         }
         .frame(maxWidth: .infinity)
+    }
+}
+
+/// The frames of the chip rows, in the pager's coordinates.
+struct PageSwipeZones: PreferenceKey {
+    static let space = "pager"
+    static var defaultValue: [CGRect] = []
+    static func reduce(value: inout [CGRect], nextValue: () -> [CGRect]) { value += nextValue() }
+}
+
+extension View {
+    /// Marks a sideways-scrolling row so swiping on it doesn't flip between meetings and action items.
+    func noPageSwipe() -> some View {
+        background(GeometryReader { g in
+            Color.clear.preference(key: PageSwipeZones.self, value: [g.frame(in: .named(PageSwipeZones.space))])
+        })
     }
 }
 
