@@ -591,6 +591,7 @@ struct MeetingDetailView: View {
                 editableList("Discussion", \.discussion, notes)
             }
             editableList("Decisions", \.decisions, notes, timePrefix: "d:")
+            editableList("Risks and blockers", \.riskList, notes)
             if editing || !notes.actionItems.isEmpty { section("Action items") {
                 VStack(alignment: .leading, spacing: paper ? 0 : 12) {
                     ForEach(notes.actionItems) { item in actionItemEditor(item) }
@@ -600,6 +601,7 @@ struct MeetingDetailView: View {
                     .snapToRules(rp)
                 }
             } }
+            editableList("Key dates", \.keyDateList, notes)
             editableList("Open questions", \.openQuestions, notes)
             editableList("Next steps", \.nextSteps, notes)
         } else if !meeting.isBusy && meeting.errorMessage == nil {

@@ -94,6 +94,12 @@ enum NotesGenerator {
     - Action items: concrete tasks someone committed to or was asked to do. Give the owner \
     when the transcript makes it clear, otherwise leave it out. Give a due date only if one was \
     stated, as the person said it.
+    - Risks and blockers: concerns raised, blockers, dependencies on other people or teams, and \
+    anything said to be at risk of slipping. One short line each, naming who raised it or owns it \
+    when clear. Empty if none came up; do not invent risks.
+    - Key dates: every deadline, due date, launch, meeting or other date mentioned, one entry each \
+    as "what: when", keeping the date words as said (for example "Beta cut: next Monday"). Empty if \
+    no dates came up.
     - Open questions: questions raised but not answered.
     - Next steps: follow-ups such as the next meeting or what happens after this one.
     - Title: a short, specific title (under 8 words).
@@ -154,6 +160,8 @@ enum NotesGenerator {
                     ],
                 ],
                 "open_questions": ["type": "array", "items": ["type": "string"]],
+                "risks": ["type": "array", "items": ["type": "string"]],
+                "key_dates": ["type": "array", "items": ["type": "string"]],
                 "next_steps": ["type": "array", "items": ["type": "string"]],
                 "speaker_names": [
                     "type": "array",
@@ -302,6 +310,10 @@ enum NotesGenerator {
             actionItems: items,
             openQuestions: strings("open_questions"),
             nextSteps: strings("next_steps"))
+        let risks = strings("risks")
+        if !risks.isEmpty { notes.risks = risks }
+        let keyDates = strings("key_dates")
+        if !keyDates.isEmpty { notes.keyDates = keyDates }
         let topics: [DiscussionTopic] = (input["topics"] as? [[String: Any]] ?? []).compactMap { raw in
             let title = NotesText.normalize((raw["title"] as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             let points = timed(raw["points"])
@@ -314,6 +326,7 @@ enum NotesGenerator {
         if !topics.isEmpty { notes.topics = topics }
         if !times.isEmpty { notes.times = times }
         RelativeDates.apply(specs, to: &notes, meetingDate: meetingDate)
+        notes.keyDates = notes.keyDates?.sortedByDate()
         var speakerNames: [String: String] = [:]
         for raw in input["speaker_names"] as? [[String: Any]] ?? [] {
             guard let label = raw["speaker"] as? String,
@@ -521,6 +534,8 @@ enum RelativeDates {
         notes.decisions = notes.decisions.map(annotate)
         notes.openQuestions = notes.openQuestions.map(annotate)
         notes.nextSteps = notes.nextSteps.map(annotate)
+        notes.risks = notes.risks?.map(annotate)
+        notes.keyDates = notes.keyDates?.map(annotate)
         for i in notes.actionItems.indices {
             notes.actionItems[i].task = annotate(notes.actionItems[i].task)
             if let due = notes.actionItems[i].due { notes.actionItems[i].due = dueDate(due) }

@@ -64,16 +64,36 @@ enum BannerSettings {
     }
 }
 
+/// Reads the full date the app writes next to date phrases ("Fri, Oct 17, 2026") out of a line of text.
+func writtenDate(in text: String) -> Date? {
+    guard let range = text.range(of: #"[A-Z][a-z]{2}, [A-Z][a-z]{2} \d{1,2}, \d{4}"#, options: .regularExpression) else {
+        return nil
+    }
+    let f = DateFormatter()
+    f.locale = Locale(identifier: "en_US_POSIX")
+    f.dateFormat = "EEE, MMM d, yyyy"
+    return f.date(from: String(text[range]))
+}
+
+extension Array where Element == String {
+    /// Lines with a written date first, soonest first; lines without one keep their order after them.
+    func sortedByDate() -> [String] {
+        let dated = enumerated().map { (i: $0.offset, line: $0.element, date: writtenDate(in: $0.element)) }
+        return dated.sorted { a, b in
+            switch (a.date, b.date) {
+            case let (x?, y?): return x == y ? a.i < b.i : x < y
+            case (.some, nil): return true
+            case (nil, .some): return false
+            default: return a.i < b.i
+            }
+        }.map(\.line)
+    }
+}
+
 extension ActionItem {
     /// The day it's due, read from the full date the app writes into due dates ("Fri, Oct 17, 2026").
     var dueDate: Date? {
-        guard let due, let range = due.range(of: #"[A-Z][a-z]{2}, [A-Z][a-z]{2} \d{1,2}, \d{4}"#, options: .regularExpression) else {
-            return nil
-        }
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "en_US_POSIX")
-        f.dateFormat = "EEE, MMM d, yyyy"
-        guard let date = f.date(from: String(due[range])) else { return nil }
+        guard let due, let date = writtenDate(in: due) else { return nil }
         // "week of Mon, Oct 13" counts as due by the end of that week.
         if due.lowercased().contains("week of") {
             return Calendar.current.date(byAdding: .day, value: 4, to: date)

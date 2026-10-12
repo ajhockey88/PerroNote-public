@@ -92,6 +92,21 @@ struct MeetingNotes: Codable, Hashable {
     var actionItems: [ActionItem]
     var openQuestions: [String]
     var nextSteps: [String]
+    /// Concerns, blockers, dependencies and things that might slip. Nil or empty when none came up.
+    var risks: [String]? = nil
+    /// Each deadline or date mentioned and what happens then, soonest first. Nil or empty when none came up.
+    var keyDates: [String]? = nil
+
+    /// The risks as a plain list, for editing; empty lists are stored as nil so the section stays hidden.
+    var riskList: [String] {
+        get { risks ?? [] }
+        set { risks = newValue.isEmpty ? nil : newValue }
+    }
+
+    var keyDateList: [String] {
+        get { keyDates ?? [] }
+        set { keyDates = newValue.isEmpty ? nil : newValue }
+    }
     /// Discussion grouped by topic. Older meetings only have `discussion`.
     var topics: [DiscussionTopic]? = nil
     /// Where in the audio each note came from, in seconds. Used only inside the app, never exported.
@@ -139,6 +154,8 @@ struct MeetingNotes: Codable, Hashable {
         decisions = decisions.map(r)
         openQuestions = openQuestions.map(r)
         nextSteps = nextSteps.map(r)
+        risks = risks?.map(r)
+        keyDates = keyDates?.map(r)
         for i in actionItems.indices {
             actionItems[i].task = r(actionItems[i].task)
             actionItems[i].owner = actionItems[i].owner.map(r)
@@ -279,6 +296,7 @@ extension MeetingNotes {
             }
         } else { list("Discussion", discussion) }
         list("Decisions", decisions)
+        list("Risks and Blockers", riskList)
         if !actionItems.isEmpty {
             out += "## Action Items\n"
             for item in actionItems {
@@ -289,6 +307,7 @@ extension MeetingNotes {
             }
             out += "\n"
         }
+        list("Key Dates", keyDateList)
         list("Open Questions", openQuestions)
         list("Next Steps", nextSteps)
         return out.trimmingCharacters(in: .whitespacesAndNewlines) + "\n"
@@ -311,6 +330,8 @@ extension Meeting {
             parts += n.decisions
             parts += n.openQuestions
             parts += n.nextSteps
+            parts += n.riskList
+            parts += n.keyDateList
             for item in n.actionItems { parts += [item.task, item.owner ?? "", item.due ?? ""] }
         }
         return parts.joined(separator: "\n")

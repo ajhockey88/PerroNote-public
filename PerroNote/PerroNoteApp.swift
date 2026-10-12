@@ -29,7 +29,7 @@ struct PerroNoteApp: App {
                 .environmentObject(people)
                 .preferredColorScheme(AppAppearance(rawValue: appearance)?.scheme)
                 .onChange(of: scenePhase) { phase in
-                    if phase != .active { store.flush() }
+                    if phase != .active { store.flush() } else { store.refreshAlerts() }
                 }
                 .onAppear {
                     store.people = people

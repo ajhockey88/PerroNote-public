@@ -90,6 +90,14 @@ final class MeetingStore: ObservableObject {
     private func saveLoose() {
         guard let data = try? JSONEncoder().encode(looseItems) else { return }
         try? data.write(to: Self.looseURL, options: .atomic)
+        refreshAlerts()
+    }
+
+    /// Redoes the due date notifications for the items the banner counts (Settings > Action items banner).
+    func refreshAlerts() {
+        let people = BannerSettings.people(from: UserDefaults.standard.string(forKey: BannerSettings.peopleKey) ?? "")
+        let myName = UserDefaults.standard.string(forKey: BannerSettings.myNameKey) ?? ""
+        DueAlerts.reschedule(allActionItems.filter { BannerSettings.matches($0, people: people, myName: myName) })
     }
 
     /// Every tag used on any meeting, A to Z.
@@ -314,5 +322,6 @@ final class MeetingStore: ObservableObject {
     private func save() {
         guard let data = try? JSONEncoder().encode(meetings) else { return }
         try? data.write(to: Self.indexURL, options: .atomic)
+        refreshAlerts()
     }
 }

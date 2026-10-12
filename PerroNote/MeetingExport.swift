@@ -65,6 +65,7 @@ enum MeetingExport {
             rows += section("Discussion", notes.discussion)
         }
         rows += section("Decisions", notes.decisions)
+        rows += section("Risks and Blockers", notes.riskList)
 
         if !notes.actionItems.isEmpty {
             rows += heading("Action Items")
@@ -86,6 +87,7 @@ enum MeetingExport {
             rows += "<tr><td style=\"padding:8px 0 0 0;\">\(table)</td></tr>"
         }
 
+        rows += section("Key Dates", notes.keyDateList)
         rows += section("Open Questions", notes.openQuestions)
         rows += section("Next Steps", notes.nextSteps)
         rows += """
@@ -126,6 +128,7 @@ enum MeetingExport {
             list("Discussion", notes.discussion)
         }
         list("Decisions", notes.decisions)
+        list("Risks and blockers", notes.riskList)
         if !notes.actionItems.isEmpty {
             out += "ACTION ITEMS\n"
             for i in notes.actionItems {
@@ -136,6 +139,7 @@ enum MeetingExport {
             }
             out += "\n"
         }
+        list("Key dates", notes.keyDateList)
         list("Open questions", notes.openQuestions)
         list("Next steps", notes.nextSteps)
         return out.trimmingCharacters(in: .whitespacesAndNewlines) + "\n"

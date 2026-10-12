@@ -20,6 +20,10 @@ struct SettingsView: View {
     @AppStorage(BannerSettings.dueKey) private var bannerDue = BannerSettings.Due.all.rawValue
     @AppStorage(BannerSettings.peopleKey) private var bannerPeople = ""
     @AppStorage(BannerSettings.myNameKey) private var myName = ""
+    @AppStorage(DueAlerts.enabledKey) private var dueAlerts = false
+    @AppStorage(DueAlerts.timeKey) private var dueAlertMinutes = 8 * 60
+    @EnvironmentObject private var store: MeetingStore
+    @State private var alertsDenied = false
 
     private var bannerPeopleSummary: String {
         let chosen = BannerSettings.people(from: bannerPeople)
@@ -78,6 +82,42 @@ struct SettingsView: View {
                     Text("Action items banner")
                 } footer: {
                     Text("The card at the top of the meetings page. Choose whose action items it counts (pick as many as you like) and which due dates. Your name lets it find items assigned to you.")
+                }
+
+                Section {
+                    Toggle("Due date alerts", isOn: Binding(get: { dueAlerts }, set: { on in
+                        if on {
+                            Task {
+                                if await DueAlerts.requestPermission() {
+                                    dueAlerts = true
+                                    store.refreshAlerts()
+                                } else {
+                                    alertsDenied = true
+                                }
+                            }
+                        } else {
+                            dueAlerts = false
+                            store.refreshAlerts()
+                        }
+                    }))
+                    if dueAlerts {
+                        DatePicker("Each morning at", selection: Binding(
+                            get: { Calendar.current.date(byAdding: .minute, value: dueAlertMinutes, to: Calendar.current.startOfDay(for: Date())) ?? Date() },
+                            set: { d in
+                                let c = Calendar.current.dateComponents([.hour, .minute], from: d)
+                                dueAlertMinutes = (c.hour ?? 8) * 60 + (c.minute ?? 0)
+                                store.refreshAlerts()
+                            }), displayedComponents: .hourAndMinute)
+                    }
+                } header: {
+                    Text("Notifications")
+                } footer: {
+                    Text("One alert a day when action items are overdue, due today or due tomorrow. It counts the same people as the banner. Worked out on this phone; nothing is sent anywhere.")
+                }
+                .alert("Notifications are off", isPresented: $alertsDenied) {
+                    Button("OK", role: .cancel) {}
+                } message: {
+                    Text("Turn on notifications for PerroNote in the iPhone Settings app, then try again.")
                 }
 
                 Section {
@@ -226,6 +266,8 @@ struct SettingsView: View {
                 }
             }
         }
+        // Whose items count, or your name, may have changed: redo the due date alerts to match.
+        .onDisappear { store.refreshAlerts() }
     }
 
     private func save() {

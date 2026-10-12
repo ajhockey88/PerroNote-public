@@ -32,6 +32,7 @@ enum MeetingDocx {
             body += section("Discussion", notes.discussion)
         }
         body += section("Decisions", notes.decisions)
+        body += section("Risks and Blockers", notes.riskList)
 
         if !notes.actionItems.isEmpty {
             body += para("Heading1", "Action Items")
@@ -63,6 +64,7 @@ enum MeetingDocx {
             body += "</w:tbl>"
         }
 
+        body += section("Key Dates", notes.keyDateList)
         body += section("Open Questions", notes.openQuestions)
         body += section("Next Steps", notes.nextSteps)
         body += para("Footer", "Drafted with PerroNote")
