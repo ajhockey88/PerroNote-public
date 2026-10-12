@@ -96,6 +96,17 @@ struct MeetingNotes: Codable, Hashable {
     /// Keys: "p:<topic id>:<point number>", "d:<decision number>", "a:<action item id>".
     var times: [String: Double]? = nil
 
+    /// True for a voice label like "Speaker 3", which is not a person's name.
+    static func isSpeakerLabel(_ name: String) -> Bool {
+        name.trimmingCharacters(in: .whitespaces).range(of: #"^Speaker \d+$"#, options: [.regularExpression, .caseInsensitive]) != nil
+    }
+
+    /// Attendees without voice labels and without repeats (ignoring case), in their first order.
+    mutating func cleanAttendees() {
+        var seen = Set<String>()
+        attendees = attendees.filter { !Self.isSpeakerLabel($0) && seen.insert($0.lowercased()).inserted }
+    }
+
     /// Puts new names in place of old ones everywhere in the notes, for example "Speaker 2" to "Priya".
     mutating func replaceNames(_ renames: [String: String]) {
         guard !renames.isEmpty else { return }

@@ -45,13 +45,30 @@ struct WhoIsWhoView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var player = SnippetPlayer()
 
-    @State private var attendeeNames: [String] = []
+    /// One editable line per attendee. Rows keep their own id so typing in one doesn't rebuild the list.
+    private struct AttendeeRow: Identifiable {
+        let id = UUID()
+        var name: String
+    }
+    @State private var rows: [AttendeeRow] = []
     @State private var choice: [String: String] = [:]
     @State private var newName = ""
     @State private var loaded = false
     @State private var confirmReplace = false
 
     private var meeting: Meeting? { store.meeting(meetingID) }
+
+    private var attendeeNames: [String] {
+        var seen = Set<String>()
+        return rows.map { $0.name.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty && seen.insert($0.lowercased()).inserted }
+    }
+
+    private func addAttendee(_ name: String) {
+        if !attendeeNames.contains(where: { $0.caseInsensitiveCompare(name) == .orderedSame }) {
+            rows.append(AttendeeRow(name: name))
+        }
+    }
 
     /// Everyone you can pick for a voice: this meeting's attendees first, then saved people.
     private var options: [String] {
@@ -102,10 +119,12 @@ struct WhoIsWhoView: View {
 
     private var attendeesSection: some View {
         Section {
-            ForEach(attendeeNames, id: \.self) { name in
-                Text(name)
+            ForEach($rows) { $row in
+                TextField("Name", text: $row.name)
+                    .textInputAutocapitalization(.words)
+                    .autocorrectionDisabled()
             }
-            .onDelete { attendeeNames.remove(atOffsets: $0) }
+            .onDelete { rows.remove(atOffsets: $0) }
 
             HStack {
                 TextField("Add a name", text: $newName)
@@ -122,7 +141,7 @@ struct WhoIsWhoView: View {
             if !others.isEmpty {
                 Menu {
                     ForEach(others) { p in
-                        Button(p.name) { attendeeNames.append(p.name) }
+                        Button(p.name) { addAttendee(p.name) }
                     }
                 } label: {
                     Label("Add from people you've met", systemImage: "person.crop.circle.badge.plus")
@@ -131,7 +150,7 @@ struct WhoIsWhoView: View {
         } header: {
             Text("Who was there")
         } footer: {
-            Text("The notes list these as attendees.")
+            Text("Filled in from the names the meeting mentioned. Tap a name to fix it, or swipe to remove it. The notes list these as attendees.")
         }
     }
 
@@ -163,9 +182,7 @@ struct WhoIsWhoView: View {
             if let suggested = voice.suggestedName, (choice[voice.id] ?? "") != suggested {
                 Button {
                     choice[voice.id] = suggested
-                    if !attendeeNames.contains(where: { $0.caseInsensitiveCompare(suggested) == .orderedSame }) {
-                        attendeeNames.append(suggested)
-                    }
+                    addAttendee(suggested)
                 } label: {
                     Label("Sounds like \(suggested). Use this", systemImage: "sparkles")
                 }
@@ -185,16 +202,19 @@ struct WhoIsWhoView: View {
     private func load() {
         guard !loaded, let m = meeting else { return }
         loaded = true
-        attendeeNames = m.attendeeNames ?? []
+        // Until you've saved a list, start from the names the notes found and the voices that sound familiar.
+        var names = m.attendeeNames ?? []
+        if names.isEmpty {
+            names = (m.notes?.attendees ?? []) + (m.voices ?? []).compactMap { $0.name ?? $0.suggestedName }
+        }
+        for name in names where !MeetingNotes.isSpeakerLabel(name) { addAttendee(name) }
         for v in m.voices ?? [] { choice[v.id] = v.name ?? "" }
     }
 
     private func addTyped() {
         let name = newName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else { return }
-        if !attendeeNames.contains(where: { $0.caseInsensitiveCompare(name) == .orderedSame }) {
-            attendeeNames.append(name)
-        }
+        addAttendee(name)
         newName = ""
     }
 

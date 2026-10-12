@@ -51,7 +51,8 @@ enum NotesGenerator {
     label is "Speaker N", do not invent a name; use that label (for example "Speaker 2") as the owner \
     unless the conversation clearly says who it is.
     - Attendees: the confirmed attendee list when one is given, plus anyone else named or addressed; \
-    empty if none are clear.
+    empty if none are clear. Only real names: never list a "Speaker N" label as an attendee, since that \
+    voice is usually one of the named people.
     - Abbreviations: write "COB" for close of business and "EOD" for end of day, everywhere they \
     appear, including in due dates.
     - Relative dates: whenever anyone refers to a day or period relative to the meeting, such as \

@@ -146,6 +146,7 @@ final class MeetingStore: ObservableObject {
                 $0.usage = ($0.usage ?? []) + [TokenUsage(kind: hadNotes ? .redraft : .draft,
                                                           model: NotesGenerator.model, json: result.usage)]
                 Self.carryOverTicks(from: $0.notes, into: &notes)
+                notes.cleanAttendees()
                 if !$0.titleEdited { $0.title = result.title }
                 $0.notes = notes
                 $0.notesEdited = nil
@@ -196,8 +197,7 @@ final class MeetingStore: ObservableObject {
             for name in attendeeNames where !notes.attendees.contains(where: { $0.caseInsensitiveCompare(name) == .orderedSame }) {
                 notes.attendees.append(name)
             }
-            var seen = Set<String>()
-            notes.attendees = notes.attendees.filter { seen.insert($0.lowercased()).inserted }
+            notes.cleanAttendees()
             m.notes = notes
             if !m.titleEdited { m.title = Self.replacingNames(renames, in: m.title) }
         }
