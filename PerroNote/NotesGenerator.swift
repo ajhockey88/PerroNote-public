@@ -24,6 +24,8 @@ struct GeneratedNotes {
     var title: String
     var notes: MeetingNotes
     var usage: [String: Any]? = nil
+    /// Names the conversation gives to unnamed voices, by voice id ("2" for Speaker 2).
+    var speakerNames: [String: String] = [:]
 }
 
 /// Sends a transcript to the Claude API and gets back structured meeting notes.
@@ -50,6 +52,11 @@ enum NotesGenerator {
     "Speaker N". Use real names as the owners of action items and for attributing decisions. Where the \
     label is "Speaker N", do not invent a name; use that label (for example "Speaker 2") as the owner \
     unless the conversation clearly says who it is.
+    - Speaker names: when turns are labelled "Speaker N" and the conversation makes it clear who \
+    one of them is (they introduce themselves, someone addresses them by name and they answer, or \
+    they are thanked or called on by name right before or after speaking), add an entry to \
+    speaker_names with the label and the name. Only when it is reasonably clear; otherwise leave that \
+    speaker out. Never give two speakers the same name.
     - Attendees: the confirmed attendee list when one is given, plus anyone else named or addressed; \
     empty if none are clear. Only real names: never list a "Speaker N" label as an attendee, since that \
     voice is usually one of the named people.
@@ -148,6 +155,14 @@ enum NotesGenerator {
                 ],
                 "open_questions": ["type": "array", "items": ["type": "string"]],
                 "next_steps": ["type": "array", "items": ["type": "string"]],
+                "speaker_names": [
+                    "type": "array",
+                    "items": [
+                        "type": "object",
+                        "properties": ["speaker": ["type": "string"], "name": ["type": "string"]],
+                        "required": ["speaker", "name"],
+                    ],
+                ],
                 "relative_dates": [
                     "type": "array",
                     "items": [
@@ -295,8 +310,18 @@ enum NotesGenerator {
         if !topics.isEmpty { notes.topics = topics }
         if !times.isEmpty { notes.times = times }
         RelativeDates.apply(specs, to: &notes, meetingDate: meetingDate)
+        var speakerNames: [String: String] = [:]
+        for raw in input["speaker_names"] as? [[String: Any]] ?? [] {
+            guard let label = raw["speaker"] as? String,
+                  let name = (raw["name"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !name.isEmpty, !MeetingNotes.isSpeakerLabel(name) else { continue }
+            let id = label.replacingOccurrences(of: "speaker", with: "", options: .caseInsensitive)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if !id.isEmpty { speakerNames[id] = name }
+        }
         let title = (input["title"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        return GeneratedNotes(title: title.isEmpty ? "Meeting" : title, notes: notes, usage: json["usage"] as? [String: Any])
+        return GeneratedNotes(title: title.isEmpty ? "Meeting" : title, notes: notes,
+                              usage: json["usage"] as? [String: Any], speakerNames: speakerNames)
     }
 }
 

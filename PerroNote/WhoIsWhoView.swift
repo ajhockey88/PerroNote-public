@@ -187,6 +187,14 @@ struct WhoIsWhoView: View {
                     Label("Sounds like \(suggested). Use this", systemImage: "sparkles")
                 }
             }
+            if let mentioned = voice.mentionedName, mentioned != voice.suggestedName, (choice[voice.id] ?? "") != mentioned {
+                Button {
+                    choice[voice.id] = mentioned
+                    addAttendee(mentioned)
+                } label: {
+                    Label("Called \(mentioned) in the meeting. Use this", systemImage: "text.bubble")
+                }
+            }
 
             Picker("Who is this?", selection: Binding(
                 get: { choice[voice.id] ?? "" },
@@ -205,7 +213,7 @@ struct WhoIsWhoView: View {
         // Until you've saved a list, start from the names the notes found and the voices that sound familiar.
         var names = m.attendeeNames ?? []
         if names.isEmpty {
-            names = (m.notes?.attendees ?? []) + (m.voices ?? []).compactMap { $0.name ?? $0.suggestedName }
+            names = (m.notes?.attendees ?? []) + (m.voices ?? []).compactMap { $0.name ?? $0.suggestedName ?? $0.mentionedName }
         }
         for name in names where !MeetingNotes.isSpeakerLabel(name) { addAttendee(name) }
         for v in m.voices ?? [] { choice[v.id] = v.name ?? "" }

@@ -107,6 +107,26 @@ struct MeetingNotes: Codable, Hashable {
         attendees = attendees.filter { !Self.isSpeakerLabel($0) && seen.insert($0.lowercased()).inserted }
     }
 
+    /// Cleans the attendees, then makes sure every voice is accounted for: by its name, by the name the
+    /// conversation gave it, or, when there are more voices than names, as "Speaker N" so you know to
+    /// say who it is in Who's who.
+    mutating func fillAttendees(voices: [DetectedVoice]?) {
+        cleanAttendees()
+        guard let voices, voices.count > 1 else { return }
+        func has(_ name: String) -> Bool { attendees.contains { $0.caseInsensitiveCompare(name) == .orderedSame } }
+        var unnamed: [DetectedVoice] = []
+        for voice in voices {
+            if let name = voice.name ?? voice.mentionedName {
+                if !has(name) { attendees.append(name) }
+            } else {
+                unnamed.append(voice)
+            }
+        }
+        let missing = voices.count - attendees.count
+        guard missing > 0 else { return }
+        attendees += unnamed.prefix(missing).map(\.label)
+    }
+
     /// Puts new names in place of old ones everywhere in the notes, for example "Speaker 2" to "Priya".
     mutating func replaceNames(_ renames: [String: String]) {
         guard !renames.isEmpty else { return }
@@ -169,6 +189,8 @@ struct DetectedVoice: Codable, Identifiable, Hashable {
     var embedding: [Float]
     var suggestedPersonID: UUID?
     var suggestedName: String?
+    /// The name the conversation itself points to (someone said "thanks, Amy"), found while drafting the notes.
+    var mentionedName: String?
 
     var label: String { name ?? "Speaker \(id)" }
 }
