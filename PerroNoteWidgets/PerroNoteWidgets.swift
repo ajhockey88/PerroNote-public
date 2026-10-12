@@ -1,4 +1,5 @@
 import ActivityKit
+import AppIntents
 import SwiftUI
 import WidgetKit
 
@@ -6,6 +7,23 @@ import WidgetKit
 struct PerroNoteWidgets: WidgetBundle {
     var body: some Widget {
         RecordingLiveActivity()
+        if #available(iOS 18.0, *) {
+            RecordControl()
+        }
+    }
+}
+
+/// A Control Center (and Lock Screen) button that opens PerroNote and starts recording.
+@available(iOS 18.0, *)
+struct RecordControl: ControlWidget {
+    var body: some ControlWidgetConfiguration {
+        StaticControlConfiguration(kind: "com.ajhockey88.perronote.record") {
+            ControlWidgetButton(action: StartRecordingIntent()) {
+                Label("Record Meeting", systemImage: "mic.fill")
+            }
+        }
+        .displayName("Record Meeting")
+        .description("Start recording a meeting in PerroNote.")
     }
 }
 

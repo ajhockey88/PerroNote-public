@@ -13,21 +13,11 @@ struct ActionItemsView: View {
     /// The person whose items are shown, or nil for everyone.
     @State private var person: String?
     @State private var dateFilter: DateFilter = .all
+    @State private var tagFilter: String?
     @State private var pickingDay = false
     @State private var pickedDay = Date()
 
-    private var filtering: Bool { person != nil || dateFilter != .all }
-
-    /// The people an item is assigned to. An owner like "Priya and Sam" counts for both.
-    private static func owners(_ item: ActionItem) -> [String] {
-        guard let owner = item.owner else { return [] }
-        return owner
-            .replacingOccurrences(of: " and ", with: ",")
-            .replacingOccurrences(of: "&", with: ",")
-            .split(separator: ",")
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-    }
+    private var filtering: Bool { person != nil || dateFilter != .all || tagFilter != nil }
 
     /// Everyone who owns at least one action item, A to Z.
     private var people: [String] {
@@ -35,7 +25,7 @@ struct ActionItemsView: View {
         var out: [String] = []
         for meeting in store.meetings {
             for item in meeting.notes?.actionItems ?? [] where !item.task.isEmpty {
-                for name in Self.owners(item) where seen.insert(name.lowercased()).inserted { out.append(name) }
+                for name in actionOwners(item) where seen.insert(name.lowercased()).inserted { out.append(name) }
             }
         }
         return out.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
@@ -43,10 +33,12 @@ struct ActionItemsView: View {
 
     private var groups: [(meeting: Meeting, items: [ActionItem])] {
         store.meetings.compactMap { meeting in
-            guard dateFilter.contains(meeting.date) else { return nil }
+            guard dateFilter.contains(meeting.date),
+                  tagFilter.map({ t in (meeting.tags ?? []).contains { $0.caseInsensitiveCompare(t) == .orderedSame } }) ?? true
+            else { return nil }
             let items = (meeting.notes?.actionItems ?? []).filter { item in
                 (showDone || !item.done)
-                    && (person.map { p in Self.owners(item).contains { $0.caseInsensitiveCompare(p) == .orderedSame } } ?? true)
+                    && (person.map { p in actionOwners(item).contains { $0.caseInsensitiveCompare(p) == .orderedSame } } ?? true)
             }
             return items.isEmpty ? nil : (meeting, items)
         }
@@ -99,7 +91,7 @@ struct ActionItemsView: View {
                         Image(systemName: "checklist").font(.largeTitle).foregroundStyle(.secondary)
                         Text(filtering ? "Nothing matches" : showDone ? "No action items yet" : "Nothing open")
                             .font(.headline)
-                        Text(filtering ? "No action items fit the person and date you picked."
+                        Text(filtering ? "No action items fit the filters you picked."
                                        : "Action items from your meetings show up here.")
                             .font(.subheadline).foregroundStyle(.secondary)
                     }
@@ -127,6 +119,11 @@ struct ActionItemsView: View {
 
     /// Who and when: a person menu, a date menu, and a way to clear both.
     private var filters: some View {
+        ScrollView(.horizontal, showsIndicators: false) { filterChips }
+            .padding(.top, 8)
+    }
+
+    private var filterChips: some View {
         HStack(spacing: 6) {
             Menu {
                 Button { person = nil } label: { pickLabel("Everyone", on: person == nil) }
@@ -146,15 +143,25 @@ struct ActionItemsView: View {
             } label: {
                 chip(dateFilter.title, icon: "calendar", on: dateFilter != .all)
             }
-            Spacer(minLength: 0)
+            let tags = store.allTags
+            if !tags.isEmpty {
+                Menu {
+                    Button { tagFilter = nil } label: { pickLabel("All tags", on: tagFilter == nil) }
+                    Divider()
+                    ForEach(tags, id: \.self) { tag in
+                        Button { tagFilter = tag } label: { pickLabel(tag, on: tagFilter == tag) }
+                    }
+                } label: {
+                    chip(tagFilter ?? "Tag", icon: "tag", on: tagFilter != nil)
+                }
+            }
             if filtering {
-                Button("Clear") { person = nil; dateFilter = .all }
+                Button("Clear") { person = nil; dateFilter = .all; tagFilter = nil }
                     .font(.footnote.weight(.semibold))
             }
         }
         .menuStyle(.button)
         .buttonStyle(.borderless)
-        .padding(.top, 8)
     }
 
     @ViewBuilder private func pickLabel(_ title: String, on: Bool) -> some View {

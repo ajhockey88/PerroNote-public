@@ -62,6 +62,21 @@ final class MeetingStore: ObservableObject {
         save()
     }
 
+    /// Every tag used on any meeting, A to Z.
+    var allTags: [String] {
+        var seen = Set<String>()
+        return meetings.flatMap { $0.tags ?? [] }
+            .filter { seen.insert($0.lowercased()).inserted }
+            .sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+    }
+
+    /// Adds a recording brought in from Files and starts turning it into notes.
+    func addImported(_ file: AudioImport.Imported) {
+        let id = add(fileName: file.fileName, duration: file.duration, date: file.date)
+        if !file.title.isEmpty { update(id) { $0.title = file.title } }
+        Task { await process(id) }
+    }
+
     func delete(_ id: UUID) {
         guard let m = meeting(id) else { return }
         try? FileManager.default.removeItem(at: Self.audioURL(for: m.audioFile))

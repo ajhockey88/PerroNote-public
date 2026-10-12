@@ -21,8 +21,8 @@ targets:
       path: PerroNote/Info.plist
       properties:
         CFBundleDisplayName: PerroNote
-        CFBundleShortVersionString: "1.5"
-        CFBundleVersion: "10"
+        CFBundleShortVersionString: "1.6"
+        CFBundleVersion: "11"
         UILaunchScreen: {}
         UIBackgroundModes:
           - audio
@@ -46,14 +46,15 @@ targets:
     sources:
       - PerroNoteWidgets
       - PerroNote/RecordingAttributes.swift
+      - PerroNote/StartRecordingIntent.swift
       - PerroNote/CassetteView.swift
       - PerroNote/Fonts
     info:
       path: PerroNoteWidgets/Info.plist
       properties:
         CFBundleDisplayName: PerroNote Recording
-        CFBundleShortVersionString: "1.5"
-        CFBundleVersion: "10"
+        CFBundleShortVersionString: "1.6"
+        CFBundleVersion: "11"
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
         UIAppFonts:

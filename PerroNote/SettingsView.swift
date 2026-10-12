@@ -15,6 +15,7 @@ struct SettingsView: View {
     @State private var apiKey = Keychain.get(NotesGenerator.apiKeyName) ?? ""
     @State private var model = UserDefaults.standard.string(forKey: NotesGenerator.modelDefaultsKey) ?? ""
     @State private var accounts = OutlookSettings.accounts
+    @AppStorage(Vocabulary.key) private var vocabulary = ""
 
     var body: some View {
         NavigationStack {
@@ -47,6 +48,16 @@ struct SettingsView: View {
                     Text("Model")
                 } footer: {
                     Text("Leave blank to use \(NotesGenerator.defaultModel).")
+                }
+
+                Section {
+                    TextField("Morgan, Kubernetes, Q3 OKRs", text: $vocabulary, axis: .vertical)
+                        .lineLimit(3...8)
+                        .autocorrectionDisabled()
+                } header: {
+                    Text("Custom vocabulary")
+                } footer: {
+                    Text("Names, acronyms and product words that come up in your meetings, one per line or separated by commas. Speech recognition listens for them and the notes use these spellings.")
                 }
 
                 Section {

@@ -142,6 +142,7 @@ enum Transcriber {
         request.shouldReportPartialResults = false
         request.requiresOnDeviceRecognition = onDevice
         request.addsPunctuation = true
+        request.contextualStrings = Array(Vocabulary.terms.prefix(100))
 
         return try await withCheckedThrowingContinuation { (cont: CheckedContinuation<TranscriptionResult, Error>) in
             var finished = false

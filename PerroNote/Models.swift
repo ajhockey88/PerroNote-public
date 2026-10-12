@@ -219,6 +219,14 @@ struct Meeting: Codable, Identifiable, Hashable {
     var notesEdited: Bool?
     /// Claude usage for this meeting, one entry per request. Older meetings have none.
     var usage: [TokenUsage]?
+    /// Labels such as a project or client. A meeting can be in several, like folders that overlap.
+    var tags: [String]?
+
+    /// Whether this person was in the meeting: listed, named for a voice, or named by the notes.
+    func includes(_ person: String) -> Bool {
+        let names = (attendeeNames ?? []) + (notes?.attendees ?? []) + (voices ?? []).compactMap(\.name)
+        return names.contains { $0.caseInsensitiveCompare(person) == .orderedSame }
+    }
 
     var isBusy: Bool { status == .transcribing || status == .diarizing || status == .generating }
 
@@ -288,7 +296,7 @@ extension MeetingNotes {
 extension Meeting {
     /// Everything searchable about a meeting, lower-level text joined for a simple contains match.
     var searchableText: String {
-        var parts = [title, labeledTranscript] + (attendeeNames ?? [])
+        var parts = [title, labeledTranscript] + (attendeeNames ?? []) + (tags ?? [])
         if let n = notes {
             parts += [n.summary]
             parts += n.attendees
@@ -312,6 +320,31 @@ extension Meeting {
         let hay = searchableText
         return q.split(separator: " ").allSatisfy { hay.localizedCaseInsensitiveContains($0) }
     }
+}
+
+/// Names, acronyms and product words you set in Settings, so speech recognition and the notes spell them right.
+enum Vocabulary {
+    static let key = "custom-vocabulary"
+
+    /// One term per line or comma, blanks and repeats dropped.
+    static var terms: [String] {
+        let raw = UserDefaults.standard.string(forKey: key) ?? ""
+        var seen = Set<String>()
+        return raw.split { $0 == "\n" || $0 == "," }
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty && seen.insert($0.lowercased()).inserted }
+    }
+}
+
+/// The people in one action item's owner field. An owner like "Priya and Sam" counts for both.
+func actionOwners(_ item: ActionItem) -> [String] {
+    guard let owner = item.owner else { return [] }
+    return owner
+        .replacingOccurrences(of: " and ", with: ",")
+        .replacingOccurrences(of: "&", with: ",")
+        .split(separator: ",")
+        .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        .filter { !$0.isEmpty }
 }
 
 enum DateFilter: Equatable {

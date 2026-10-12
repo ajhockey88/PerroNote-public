@@ -198,6 +198,10 @@ enum NotesGenerator {
         if !attendees.isEmpty {
             userMessage += "Attendees (confirmed by the user): \(attendees.joined(separator: ", "))\n"
         }
+        let vocabulary = Vocabulary.terms
+        if !vocabulary.isEmpty {
+            userMessage += "Names and terms that may come up, spelled correctly (speech recognition may have misheard them; use these spellings in the notes): \(vocabulary.joined(separator: ", "))\n"
+        }
         if text.contains("Speaker 1:") && !voicesIdentified {
             userMessage += "Speakers are labelled Speaker 1, Speaker 2 and so on because nobody has said who is who yet.\n"
         }

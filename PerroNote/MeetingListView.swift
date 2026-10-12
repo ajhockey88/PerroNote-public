@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct MeetingListView: View {
     @EnvironmentObject private var store: MeetingStore
@@ -9,6 +10,12 @@ struct MeetingListView: View {
     @State private var filter: DateFilter = .all
     @FocusState private var searchFocused: Bool
     @State private var showingActions = false
+    @State private var askingAll = false
+    @State private var importing = false
+    @State private var importBusy = false
+    @State private var importError: String?
+    @State private var tagFilter: String?
+    @ObservedObject private var recordRequest = RecordRequest.shared
     @GestureState(resetTransaction: Transaction(animation: MeetingListView.pageSpring)) private var swipe = PageSwipe()
     @AppStorage(AppAppearance.key) private var appearance = AppAppearance.system.rawValue
     @PaperPitch private var pitch
@@ -21,7 +28,10 @@ struct MeetingListView: View {
     }
 
     private var visible: [Meeting] {
-        store.meetings.filter { filter.contains($0.date) && $0.matches(query) }
+        store.meetings.filter { m in
+            filter.contains(m.date) && m.matches(query)
+                && (tagFilter.map { t in (m.tags ?? []).contains { $0.caseInsensitiveCompare(t) == .orderedSame } } ?? true)
+        }
     }
 
     private var todayCount: Int { store.meetings.filter { Calendar.current.isDateInToday($0.date) }.count }
@@ -69,11 +79,41 @@ struct MeetingListView: View {
                 .simultaneousGesture(pageSwipe(width: geo.size.width))
             }
             .navigationDestination(for: UUID.self) { MeetingDetailView(id: $0) }
+            .navigationDestination(for: PeopleRoute.self) { _ in PeopleView() }
+            .navigationDestination(for: PersonRoute.self) { PersonView(name: $0.name) }
             .toolbar(.hidden, for: .navigationBar)
         }
         .fullScreenCover(isPresented: $showRecorder) { RecordingView() }
+        .sheet(isPresented: $askingAll) { AskMeetingView(meeting: nil) }
+        .fileImporter(isPresented: $importing, allowedContentTypes: [.audio, .audiovisualContent]) { result in
+            guard case .success(let url) = result else { return }
+            importBusy = true
+            Task {
+                do {
+                    store.addImported(try await AudioImport.bringIn(url))
+                } catch {
+                    importError = error.localizedDescription
+                }
+                importBusy = false
+            }
+        }
+        .alert("Import", isPresented: Binding(get: { importError != nil }, set: { if !$0 { importError = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(importError ?? "")
+        }
+        .onAppear(perform: takeRecordRequest)
+        .onChange(of: recordRequest.pending) { _ in takeRecordRequest() }
         .sheet(isPresented: $showSettings) { SettingsView() }
         .sheet(isPresented: $showDatePicker) { DateFilterSheet(filter: $filter) }
+    }
+
+    /// Control Center, Siri or Shortcuts asked to record: open the recorder on the meetings page.
+    private func takeRecordRequest() {
+        guard recordRequest.pending else { return }
+        recordRequest.pending = false
+        showPage(actions: false)
+        showRecorder = true
     }
 
     private func showPage(actions: Bool) {
@@ -124,7 +164,8 @@ struct MeetingListView: View {
             if paper && !visible.isEmpty { paperList } else { content }
         }
         .background {
-            if paper { PaperBackground() } else { Color(.systemGroupedBackground) }
+            // Reaches under the status bar and the home indicator, so no white bands show in Light.
+            if paper { PaperBackground() } else { Color(.systemGroupedBackground).ignoresSafeArea() }
         }
         .overlay(alignment: .bottom) {
             Button { showRecorder = true } label: {
@@ -196,7 +237,20 @@ struct MeetingListView: View {
     }
 
     private var headerButtons: some View {
-        HStack(spacing: 16) {
+        HStack(spacing: 14) {
+            Button { importing = true } label: {
+                if importBusy { ProgressView() } else { Image(systemName: "square.and.arrow.down") }
+            }
+            .disabled(importBusy)
+            .accessibilityLabel("Import a recording")
+
+            Button { askingAll = true } label: { Image(systemName: "bubble.left.and.text.bubble.right") }
+                .disabled(store.meetings.isEmpty)
+                .accessibilityLabel("Ask all meetings")
+
+            NavigationLink(value: PeopleRoute()) { Image(systemName: "person.2") }
+                .accessibilityLabel("People")
+
             Button { showPage(actions: true) } label: {
                 Image(systemName: "checklist")
                     .overlay(alignment: .topTrailing) {
@@ -248,6 +302,26 @@ struct MeetingListView: View {
                     chip(option == .all ? "All" : option.title, selected: filter == option) { filter = option }
                 }
                 if custom { chip(filter.title, selected: true) { filter = .all } }
+                let tags = store.allTags
+                if !tags.isEmpty {
+                    Menu {
+                        Button { tagFilter = nil } label: {
+                            if tagFilter == nil { Label("All tags", systemImage: "checkmark") } else { Text("All tags") }
+                        }
+                        Divider()
+                        ForEach(tags, id: \.self) { tag in
+                            Button { tagFilter = tag } label: {
+                                if tagFilter == tag { Label(tag, systemImage: "checkmark") } else { Text(tag) }
+                            }
+                        }
+                    } label: {
+                        Label(tagFilter ?? "Tag", systemImage: "tag")
+                            .font(.footnote.weight(.semibold))
+                            .padding(.horizontal, 12).padding(.vertical, 7)
+                            .foregroundStyle(tagFilter != nil ? Color.white : Color.primary)
+                            .background(tagFilter != nil ? Color.accentColor : chipFill, in: Capsule())
+                    }
+                }
                 Button { showDatePicker = true } label: {
                     Label("Pick", systemImage: "calendar")
                         .font(.footnote.weight(.semibold))
@@ -360,7 +434,7 @@ struct MeetingListView: View {
             .frame(maxWidth: .infinity)
         } else if visible.isEmpty {
             placeholder(icon: "magnifyingglass", title: "No matches",
-                        text: "Nothing fits the current search and date filter.")
+                        text: "Nothing fits the current search, date and tag filter.")
         } else {
             List {
                 ForEach(groups, id: \.day) { group in
@@ -488,6 +562,7 @@ private struct MeetingRow: View {
                     HStack(spacing: 8) {
                         if !people.isEmpty { avatars(ring: style.color) }
                         Text(formatDuration(meeting.duration)).font(.caption).foregroundStyle(.secondary)
+                        tagText
                         Spacer(minLength: 0)
                         openBadge(n)
                             .padding(.trailing, style.fold == .bottomTrailing ? 12 : 0)
@@ -524,6 +599,7 @@ private struct MeetingRow: View {
                     HStack(spacing: 8) {
                         if !people.isEmpty { avatars(ring: Color(.secondarySystemGroupedBackground)) }
                         Text(formatDuration(meeting.duration)).font(.caption).foregroundStyle(.secondary)
+                        tagText
                         Spacer(minLength: 0)
                         openBadge(n)
                     }
@@ -548,6 +624,15 @@ private struct MeetingRow: View {
                     .background(color(name), in: Circle())
                     .overlay(Circle().stroke(ring, lineWidth: 1.5))
             }
+        }
+    }
+
+    @ViewBuilder private var tagText: some View {
+        if let tags = meeting.tags, !tags.isEmpty {
+            Text(tags.map { "#\($0)" }.joined(separator: " "))
+                .font(.caption)
+                .foregroundStyle(Color.accentColor)
+                .lineLimit(1)
         }
     }
 

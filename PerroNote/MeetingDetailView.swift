@@ -25,6 +25,7 @@ struct MeetingDetailView: View {
     @State private var playingKey: String?
     @State private var showUsage = false
     @State private var askingVoices = false
+    @State private var editingTags = false
     @State private var voiceCount = 0
     @AppStorage(AppAppearance.key) private var appearance = AppAppearance.system.rawValue
     @PaperPitch private var pitch
@@ -178,6 +179,7 @@ struct MeetingDetailView: View {
         }
         .sheet(item: $share) { ShareSheet(items: $0.items).ignoresSafeArea() }
         .sheet(isPresented: $showWhoIsWho) { WhoIsWhoView(meetingID: id) }
+        .sheet(isPresented: $editingTags) { TagsView(meetingID: id) }
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -210,6 +212,9 @@ struct MeetingDetailView: View {
                     }
                     Button { newTitle = meeting.title; renaming = true } label: {
                         Label("Rename", systemImage: "pencil")
+                    }
+                    Button { editingTags = true } label: {
+                        Label("Tags…", systemImage: "tag")
                     }
                     Button { showWhoIsWho = true } label: {
                         Label(meeting.hasVoices ? "Who's who…" : "Attendees…", systemImage: "person.2")
@@ -431,7 +436,9 @@ struct MeetingDetailView: View {
     }
 
     private func dateLine(_ meeting: Meeting) -> String {
-        "\(meeting.date.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())) \u{00B7} \(meeting.date.formatted(date: .omitted, time: .shortened)) \u{00B7} \(formatDuration(meeting.duration))"
+        let line = "\(meeting.date.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())) \u{00B7} \(meeting.date.formatted(date: .omitted, time: .shortened)) \u{00B7} \(formatDuration(meeting.duration))"
+        guard let tags = meeting.tags, !tags.isEmpty else { return line }
+        return line + " \u{00B7} " + tags.map { "#\($0)" }.joined(separator: " ")
     }
 
     private var buttonFill: Color { paper ? Color.white.opacity(0.5) : Color(.secondarySystemGroupedBackground) }
