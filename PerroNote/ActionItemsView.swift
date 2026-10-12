@@ -1,12 +1,14 @@
 import SwiftUI
 
-/// The value that opens the action items screen from the meetings list.
-struct ActionItemsRoute: Hashable {}
-
 /// Every action item from every meeting in one place. Tick one here, and it is ticked in the meeting too.
+/// It sits to the left of the meetings list; `onBack` slides back to the meetings.
 struct ActionItemsView: View {
+    var onBack: () -> Void
     @EnvironmentObject private var store: MeetingStore
     @State private var showDone = false
+    @AppStorage(AppAppearance.key) private var appearance = AppAppearance.system.rawValue
+
+    private var paper: Bool { appearance == AppAppearance.paper.rawValue }
 
     private var groups: [(meeting: Meeting, items: [ActionItem])] {
         store.meetings.compactMap { meeting in
@@ -16,6 +18,33 @@ struct ActionItemsView: View {
     }
 
     var body: some View {
+        VStack(spacing: 0) {
+            header
+            list
+        }
+        .background(paper ? Color.clear : Color(.systemGroupedBackground))
+        .paperScreen()
+    }
+
+    private var header: some View {
+        HStack(spacing: 10) {
+            Text("Action items")
+                .font(.custom(CassetteView.markerFont, size: 28))
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+                .padding(.leading, paper ? Paper.textX - 16 : 0)
+            Spacer(minLength: 8)
+            Button(action: onBack) {
+                Image(systemName: "chevron.right").font(.title3)
+            }
+            .accessibilityLabel("Meetings")
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 8)
+        .padding(.bottom, 8)
+    }
+
+    private var list: some View {
         List {
             Section {
                 Picker("Show", selection: $showDone) {
@@ -52,9 +81,7 @@ struct ActionItemsView: View {
                 }
             }
         }
-        .paperScreen()
-        .navigationTitle("Action items")
-        .navigationBarTitleDisplayMode(.inline)
+        .scrollContentBackground(.hidden)
     }
 
     private func row(_ item: ActionItem, in meeting: Meeting) -> some View {

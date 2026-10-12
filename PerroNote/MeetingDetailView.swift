@@ -259,11 +259,8 @@ struct MeetingDetailView: View {
     /// Opens the share sheet with the recording, named after the meeting, so it can be saved to Files.
     private func shareAudio(_ meeting: Meeting) {
         let source = MeetingStore.audioURL(for: meeting.audioFile)
-        let cleaned = meeting.title
-            .components(separatedBy: CharacterSet(charactersIn: "/\\:?*\"<>|")).joined(separator: " ")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        let name = (cleaned.isEmpty ? "Recording" : String(cleaned.prefix(80))) + ".m4a"
-        let copy = FileManager.default.temporaryDirectory.appendingPathComponent(name)
+        let copy = FileManager.default.temporaryDirectory
+            .appendingPathComponent(exportFileName(meeting.title, fallback: "Recording", ext: "m4a"))
         try? FileManager.default.removeItem(at: copy)
         do {
             try FileManager.default.copyItem(at: source, to: copy)
@@ -869,12 +866,22 @@ func speakerColor(_ id: String?) -> Color {
     return palette[(n - 1 + palette.count) % palette.count]
 }
 
+/// A file name made from a meeting's title, with characters Files won't accept taken out.
+func exportFileName(_ title: String, fallback: String, ext: String) -> String {
+    let cleaned = title
+        .components(separatedBy: CharacterSet(charactersIn: "/\\:?*\"<>|")).joined(separator: " ")
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+    return (cleaned.isEmpty ? fallback : String(cleaned.prefix(80))) + "." + ext
+}
+
 /// The full transcript, opened from the document button on a meeting.
 struct TranscriptScreen: View {
     let id: UUID
     @EnvironmentObject private var store: MeetingStore
     @StateObject private var player = AudioPlayer()
     @State private var playingLine: UUID?
+    @State private var share: ShareItems?
+    @State private var shareError: String?
     @AppStorage(AppAppearance.key) private var appearance = AppAppearance.system.rawValue
     @PaperPitch private var pitch
     @State private var headerHeight: CGFloat = 0
@@ -934,7 +941,47 @@ struct TranscriptScreen: View {
         }
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                if let meeting = store.meeting(id), !(meeting.transcript ?? "").isEmpty {
+                    Button { shareTranscript(meeting) } label: {
+                        Image(systemName: "square.and.arrow.down")
+                    }
+                    .accessibilityLabel("Download transcript")
+                }
+            }
+        }
+        .sheet(item: $share) { ShareSheet(items: $0.items).ignoresSafeArea() }
+        .alert("Transcript", isPresented: Binding(get: { shareError != nil }, set: { if !$0 { shareError = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(shareError ?? "")
+        }
         .onDisappear { player.stop() }
+    }
+
+    /// The transcript as plain text: who spoke and when, one turn per paragraph.
+    private func transcriptText(_ meeting: Meeting) -> String {
+        let lines = (meeting.hasVoices ? meeting.lines : meeting.timeline) ?? []
+        let header = "\(meeting.title)\n\(meeting.date.formatted(date: .long, time: .shortened))\n\n"
+        guard !lines.isEmpty else { return header + (meeting.transcript ?? "") + "\n" }
+        let body = lines.filter { !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }.map { line in
+            let who = (meeting.hasVoices && line.speaker != nil) ? " \(meeting.label(for: line.speaker)):" : ""
+            return "[\(formatDuration(line.start))]\(who) \(line.text.trimmingCharacters(in: .whitespacesAndNewlines))"
+        }.joined(separator: "\n\n")
+        return header + body + "\n"
+    }
+
+    /// Opens the share sheet with the transcript as a text file named after the meeting, so it can be saved to Files.
+    private func shareTranscript(_ meeting: Meeting) {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent(exportFileName(meeting.title + " transcript", fallback: "Transcript", ext: "txt"))
+        do {
+            try transcriptText(meeting).write(to: url, atomically: true, encoding: .utf8)
+            share = ShareItems(items: [url])
+        } catch {
+            shareError = "The transcript could not be prepared for download."
+        }
     }
 
     @ViewBuilder

@@ -8,6 +8,8 @@ struct MeetingListView: View {
     @State private var query = ""
     @State private var filter: DateFilter = .all
     @FocusState private var searchFocused: Bool
+    @State private var showingActions = false
+    @GestureState(resetTransaction: Transaction(animation: MeetingListView.pageSpring)) private var swipe = PageSwipe()
     @AppStorage(AppAppearance.key) private var appearance = AppAppearance.system.rawValue
     @PaperPitch private var pitch
 
@@ -50,46 +52,98 @@ struct MeetingListView: View {
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 0) {
-                if paper { paperHeader } else { header }
-                if !store.meetings.isEmpty {
-                    if paper {
-                        paperSearch
-                    } else {
-                        searchBar
-                        filterChips
-                    }
+            GeometryReader { geo in
+                HStack(spacing: 0) {
+                    ActionItemsView { showPage(actions: false) }
+                        .frame(width: geo.size.width)
+                        .allowsHitTesting(showingActions)
+                        .accessibilityHidden(!showingActions)
+                    mainPage
+                        .frame(width: geo.size.width)
+                        .allowsHitTesting(!showingActions)
+                        .accessibilityHidden(showingActions)
                 }
-                if paper && !visible.isEmpty { paperList } else { content }
-            }
-            .background {
-                if paper { PaperBackground() } else { Color(.systemGroupedBackground) }
+                .frame(width: geo.size.width, alignment: .leading)
+                .offset(x: (showingActions ? 0 : -geo.size.width) + swipe.x)
+                .contentShape(Rectangle())
+                .simultaneousGesture(pageSwipe(width: geo.size.width))
             }
             .navigationDestination(for: UUID.self) { MeetingDetailView(id: $0) }
-            .navigationDestination(for: ActionItemsRoute.self) { _ in ActionItemsView() }
             .toolbar(.hidden, for: .navigationBar)
-            .overlay(alignment: .bottom) {
-                Button { showRecorder = true } label: {
-                    Label("Record", systemImage: "mic.fill")
-                        .font(.headline)
-                        .padding(.horizontal, 34)
-                        .padding(.vertical, 14)
-                        .foregroundStyle(.white)
-                        .background(Color(red: 0.90, green: 0.28, blue: 0.24), in: Capsule())
-                        .shadow(color: Color(red: 0.90, green: 0.28, blue: 0.24).opacity(0.45), radius: 10, y: 5)
-                }
-                .padding(.bottom, 10)
-                .padding(.top, 30)
-                .frame(maxWidth: .infinity)
-                .background(
-                    LinearGradient(colors: [ground.opacity(0), ground],
-                                   startPoint: .top, endPoint: .center)
-                        .allowsHitTesting(false))
-            }
         }
         .fullScreenCover(isPresented: $showRecorder) { RecordingView() }
         .sheet(isPresented: $showSettings) { SettingsView() }
         .sheet(isPresented: $showDatePicker) { DateFilterSheet(filter: $filter) }
+    }
+
+    private func showPage(actions: Bool) {
+        searchFocused = false
+        withAnimation(Self.pageSpring) { showingActions = actions }
+    }
+
+    private static let pageSpring = Animation.spring(response: 0.35, dampingFraction: 0.9)
+
+    /// Swiping right on the meetings shows the action items to their left; swiping left there comes back.
+    /// Only a mostly sideways drag in the open direction counts, so scrolling and swipe-to-delete still work.
+    private func pageSwipe(width: CGFloat) -> some Gesture {
+        DragGesture(minimumDistance: 20)
+            .updating($swipe) { value, state, _ in
+                if state.counts == nil {
+                    state.counts = swipeCounts(value.translation)
+                }
+                guard state.counts == true else { return }
+                let dx = value.translation.width
+                state.x = showingActions ? min(0, dx) : max(0, dx)
+            }
+            .onEnded { value in
+                guard swipeCounts(value.translation) else { return }
+                let dx = value.translation.width
+                let flung = value.predictedEndTranslation.width
+                let go = showingActions ? (dx < -width / 3 || flung < -width / 2)
+                                        : (dx > width / 3 || flung > width / 2)
+                if go { showPage(actions: !showingActions) }
+            }
+    }
+
+    private func swipeCounts(_ t: CGSize) -> Bool {
+        let rightway = showingActions ? t.width < 0 : t.width > 0
+        return rightway && abs(t.width) > abs(t.height) * 1.5
+    }
+
+    private var mainPage: some View {
+        VStack(spacing: 0) {
+            if paper { paperHeader } else { header }
+            if !store.meetings.isEmpty {
+                if paper {
+                    paperSearch
+                } else {
+                    searchBar
+                    filterChips
+                }
+            }
+            if paper && !visible.isEmpty { paperList } else { content }
+        }
+        .background {
+            if paper { PaperBackground() } else { Color(.systemGroupedBackground) }
+        }
+        .overlay(alignment: .bottom) {
+            Button { showRecorder = true } label: {
+                Label("Record", systemImage: "mic.fill")
+                    .font(.headline)
+                    .padding(.horizontal, 34)
+                    .padding(.vertical, 14)
+                    .foregroundStyle(.white)
+                    .background(Color(red: 0.90, green: 0.28, blue: 0.24), in: Capsule())
+                    .shadow(color: Color(red: 0.90, green: 0.28, blue: 0.24).opacity(0.45), radius: 10, y: 5)
+            }
+            .padding(.bottom, 10)
+            .padding(.top, 30)
+            .frame(maxWidth: .infinity)
+            .background(
+                LinearGradient(colors: [ground.opacity(0), ground],
+                               startPoint: .top, endPoint: .center)
+                    .allowsHitTesting(false))
+        }
     }
 
     private var header: some View {
@@ -143,7 +197,7 @@ struct MeetingListView: View {
 
     private var headerButtons: some View {
         HStack(spacing: 16) {
-            NavigationLink(value: ActionItemsRoute()) {
+            Button { showPage(actions: true) } label: {
                 Image(systemName: "checklist")
                     .overlay(alignment: .topTrailing) {
                         if openActionItems > 0 {
@@ -346,6 +400,12 @@ struct MeetingListView: View {
         }
         .frame(maxWidth: .infinity)
     }
+}
+
+/// A sideways drag between the meetings and the action items. `counts` is decided once, at the start of the drag.
+private struct PageSwipe {
+    var counts: Bool?
+    var x: CGFloat = 0
 }
 
 private struct DateFilterSheet: View {
