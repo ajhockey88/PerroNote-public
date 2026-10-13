@@ -257,6 +257,11 @@ struct SettingsView: View {
                     Text(WidgetStore.groupStatus)
                         .font(.footnote)
                         .textSelection(.enabled)
+                    let widgetLog = WidgetStore.readLog()
+                    Text(widgetLog.isEmpty ? "The widget hasn't reported anything yet." : widgetLog.joined(separator: "\n"))
+                        .font(.caption2.monospaced())
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
                 } header: {
                     Text("Widgets")
                 } footer: {

@@ -88,6 +88,22 @@ enum WidgetStore {
         WidgetCenter.shared.reloadAllTimelines()
     }
 
+    /// A few lines about what the widget did last, shown in Settings > Widgets to trace a widget that stays grey.
+    static func log(_ line: String) {
+        guard let url = folder?.appendingPathComponent("widget-log.txt") else { return }
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?"
+        let stamp = Date().formatted(date: .omitted, time: .standard)
+        var lines = readLog()
+        lines.append("\(stamp) b\(build) \(line)")
+        try? lines.suffix(12).joined(separator: "\n").write(to: url, atomically: true, encoding: .utf8)
+    }
+
+    static func readLog() -> [String] {
+        guard let url = folder?.appendingPathComponent("widget-log.txt"),
+              let text = try? String(contentsOf: url, encoding: .utf8) else { return [] }
+        return text.split(separator: "\n").map(String.init)
+    }
+
     static func readTicks() -> [String: Bool] {
         guard let url = ticksURL, let data = try? Data(contentsOf: url) else { return [:] }
         return (try? JSONDecoder().decode([String: Bool].self, from: data)) ?? [:]

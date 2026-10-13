@@ -11,11 +11,13 @@ struct ActionItemsEntry: TimelineEntry {
 
 struct ActionItemsProvider: TimelineProvider {
     func placeholder(in context: Context) -> ActionItemsEntry {
-        ActionItemsEntry(date: Date(), snapshot: .sample)
+        WidgetStore.log("placeholder \(context.family)")
+        return ActionItemsEntry(date: Date(), snapshot: .sample)
     }
 
     func getSnapshot(in context: Context, completion: @escaping (ActionItemsEntry) -> Void) {
         let saved = WidgetStore.readSnapshot()
+        WidgetStore.log("snapshot \(context.family) preview=\(context.isPreview) items=\(saved?.items.count ?? -1)")
         completion(ActionItemsEntry(date: Date(), snapshot: context.isPreview && (saved?.open.isEmpty ?? true) ? WidgetSnapshot.sample : saved))
     }
 
@@ -24,6 +26,7 @@ struct ActionItemsProvider: TimelineProvider {
         let now = Date()
         let midnight = Calendar.current.date(byAdding: .day, value: 1, to: Calendar.current.startOfDay(for: now))!
         let snapshot = WidgetStore.readSnapshot()
+        WidgetStore.log("timeline \(context.family) items=\(snapshot?.items.count ?? -1)")
         completion(Timeline(entries: [ActionItemsEntry(date: now, snapshot: snapshot),
                                       ActionItemsEntry(date: midnight, snapshot: snapshot)],
                             policy: .after(midnight)))
@@ -124,6 +127,7 @@ struct LargeActionItems: View {
     private let lineBudget = 9
 
     var body: some View {
+        let _ = WidgetStore.log("draw large items=\(entry.snapshot?.items.count ?? -1)")
         VStack(alignment: .leading, spacing: 0) {
             header
                 .padding(.bottom, 10)
@@ -184,6 +188,7 @@ struct LargeActionItems: View {
     @ViewBuilder
     private func groups(_ snapshot: WidgetSnapshot) -> some View {
         let shown = layout(snapshot)
+        let _ = WidgetStore.log("rows \(shown.map { "\($0.id)=\($0.items.count)" }.joined(separator: ","))")
         VStack(alignment: .leading, spacing: 4) {
             ForEach(shown) { section in
                 Text(section.group.title)
