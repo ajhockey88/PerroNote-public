@@ -165,6 +165,7 @@ final class MeetingStore: ObservableObject {
             if m.title != record.title { m.title = record.title; m.titleEdited = true }
             m.tags = record.tags
             if m.notes != record.notes { m.notes = record.notes; m.notesEdited = true }
+            if let names = record.attendeeNames, m.attendeeNames != names { m.attendeeNames = names }
         }
     }
 

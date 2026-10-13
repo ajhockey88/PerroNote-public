@@ -753,7 +753,7 @@ function personInMeeting(d, key, myName) {
 }
 
 /** Everyone in attendees and owners, deduped case-insensitively, with meeting and open item counts, sorted by name. */
-function buildPeople(meetingDatas, loose, myName) {
+function buildPeople(meetingDatas, loose, myName, extraNames) {
   var map = {};
   function add(raw) {
     var name = canonPerson(raw, myName);
@@ -762,6 +762,7 @@ function buildPeople(meetingDatas, loose, myName) {
     if (!map[k]) map[k] = { name: name, key: k, meetings: 0, open: 0 };
     else if (map[k].name === map[k].name.toLowerCase() && name !== name.toLowerCase()) map[k].name = name;
   }
+  (extraNames || []).forEach(add);
   var allItems = [];
   meetingDatas.forEach(function (d) {
     var n = d && d.notes && typeof d.notes === "object" ? d.notes : {};
@@ -1359,7 +1360,7 @@ if (typeof module !== "undefined" && module.exports) {
     await Promise.all(workers);
   }
 
-  function isDataPath(p) { return p === LOOSE || p === RCPT_FILE || /^meetings\/[^/]+\.json$/.test(p); }
+  function isDataPath(p) { return p === LOOSE || p === RCPT_FILE || p === "people.json" || /^meetings\/[^/]+\.json$/.test(p); }
 
   function load() {
     if (!configured()) return Promise.resolve();
@@ -1424,8 +1425,14 @@ if (typeof module !== "undefined" && module.exports) {
     if (p && state.progress) p.textContent = "Loading notes… " + state.progress.done + " / " + state.progress.total;
   }
 
+  function filesSignature() {
+    var out = [];
+    state.files.forEach(function (f, p) { out.push(p + ":" + f.sha); });
+    return out.sort().join("|");
+  }
   function afterLoad() {
     var r = route();
+    if (state.quiet) { var same = state.quiet.sig === filesSignature(); state.quiet = null; if (same) return; }
     if (r.name === "meeting" && page && page.id === r.id) {
       var f = findMeeting(r.id);
       if (isDirty()) return; // keep the user's edits; saving will detect a conflict
@@ -1532,6 +1539,12 @@ if (typeof module !== "undefined" && module.exports) {
     load().then(function () { if (!state.error) toast("Up to date"); });
   }
   document.getElementById("refreshBtn").addEventListener("click", doRefresh);
+  // Pick up changes made on the phone or another browser without a manual refresh; the screen only redraws when something changed.
+  setInterval(function () {
+    if (document.visibilityState !== "visible" || !configured() || !state.loaded || state.loading || (page && page.saving)) return;
+    state.quiet = { sig: filesSignature() };
+    load();
+  }, 60000);
   document.addEventListener("keydown", function (e) {
     if (e.key !== "/" || e.metaKey || e.ctrlKey || e.altKey) return;
     var t = e.target;
@@ -2367,7 +2380,9 @@ if (typeof module !== "undefined" && module.exports) {
     if (!f.hasNotes || !obj.notes || typeof obj.notes !== "object") return obj;
     var n = obj.notes;
     n.summary = f.summary;
+    var attendeesBefore = JSON.stringify(n.attendees || []);
     setList(n, "attendees", f.attendees);
+    if (JSON.stringify(n.attendees) !== attendeesBefore) obj.attendeeNames = n.attendees.slice(); // keeps the phone's saved list in step
     if (!f.useTopics) setList(n, "discussion", f.discussion);
     setList(n, "decisions", f.decisions);
     setList(n, "openQuestions", f.openQuestions);
@@ -3221,7 +3236,11 @@ if (typeof module !== "undefined" && module.exports) {
   }
 
   // ----- People -----
-  function peopleList() { return buildPeople(meetings().map(function (m) { return m.data; }), looseItems(), myName()); }
+  function savedPeopleNames() {
+    var f = state.files.get("people.json");
+    return f && Array.isArray(f.data) ? f.data.map(function (p) { return p && p.name; }).filter(Boolean) : [];
+  }
+  function peopleList() { return buildPeople(meetings().map(function (m) { return m.data; }), looseItems(), myName(), savedPeopleNames()); }
   function renderPeople() {
     var people = peopleList();
     var search = el("input", { type: "search", id: "peopleSearch", placeholder: "Search people…", value: state.peopleSearch, "aria-label": "Search people" });

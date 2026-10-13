@@ -28,6 +28,7 @@ enum WebSync {
         var duration: TimeInterval
         var tags: [String]?
         var notes: MeetingNotes?
+        var attendeeNames: [String]?
         var updated: Date
     }
 
@@ -168,7 +169,7 @@ enum WebSync {
         var local: [String: Data] = [:]
         for m in store.meetings where !m.isBusy {
             let record = Record(id: m.id, title: m.title, date: m.date, duration: m.duration,
-                                tags: m.tags, notes: m.notes, updated: Date(timeIntervalSince1970: 0))
+                                tags: m.tags, notes: m.notes, attendeeNames: m.attendeeNames, updated: Date(timeIntervalSince1970: 0))
             local["meetings/\(m.id.uuidString).json"] = try encoder.encode(record)
         }
         local["action-items.json"] = try encoder.encode(store.looseItems)
@@ -181,6 +182,7 @@ enum WebSync {
             OutlookSettings.accounts = merged
         }
         local["recipients.json"] = try recipientData()
+        local["people.json"] = try peopleData(store)
 
         // A meeting file that was synced before and is gone from GitHub was deleted on the web.
         // If GitHub has no meetings at all (a new or emptied repo), nothing is deleted; everything is sent again.
@@ -219,7 +221,9 @@ enum WebSync {
             } else if let remoteSHA {
                 // Edited on the web: bring it into the app.
                 let incoming = try await download(remoteSHA)
-                if path == "recipients.json" {
+                if path == "people.json" {
+                    // Names only go one way, to the website; nothing to bring in.
+                } else if path == "recipients.json" {
                     OutlookSettings.accounts = try decoder.decode([OutlookAccount].self, from: incoming)
                 } else if path == "action-items.json" {
                     let items = try decoder.decode([ActionItem].self, from: incoming)
@@ -248,6 +252,15 @@ enum WebSync {
 
         await sendOutbox(remote: remote, branch: branch, store: store)
         return outcome
+    }
+
+    private struct PersonName: Codable { var name: String }
+
+    /// The saved people by name only; voice prints never leave the phone.
+    @MainActor
+    private static func peopleData(_ store: MeetingStore) throws -> Data {
+        let names = (store.people?.people ?? []).map(\.name).sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+        return try encoder.encode(names.map { PersonName(name: $0) })
     }
 
     private static func recipientData() throws -> Data {
@@ -294,10 +307,11 @@ enum WebSync {
     private static func localData(for path: String, store: MeetingStore) -> Data? {
         if path == "action-items.json" { return try? encoder.encode(store.looseItems) }
         if path == "recipients.json" { return try? recipientData() }
+        if path == "people.json" { return try? peopleData(store) }
         let id = path.dropFirst("meetings/".count).dropLast(".json".count)
         guard let uuid = UUID(uuidString: String(id)), let m = store.meeting(uuid) else { return nil }
         let record = Record(id: m.id, title: m.title, date: m.date, duration: m.duration,
-                            tags: m.tags, notes: m.notes, updated: Date(timeIntervalSince1970: 0))
+                            tags: m.tags, notes: m.notes, attendeeNames: m.attendeeNames, updated: Date(timeIntervalSince1970: 0))
         return try? encoder.encode(record)
     }
 }
