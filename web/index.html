@@ -781,12 +781,12 @@ function buildPeople(meetingDatas, loose, myName, extraNames) {
   return list;
 }
 
-/** Counts of open, overdue and due-today items (yours when myName is set, else everyone's). */
+/** Counts of your open, overdue and due-today items: owned by "Me", or by your name when it is set. */
 function itemStats(items, myName, today) {
   var s = { open: 0, overdue: 0, today: 0 };
   items.forEach(function (a) {
     if (!a || a.done) return;
-    if (lc(myName) && !isMine(a.owner, myName)) return;
+    if (!isMine(a.owner, myName)) return;
     s.open++;
     var g = dueGroup(a, today);
     if (g === "overdue") s.overdue++;
@@ -1784,13 +1784,13 @@ if (typeof module !== "undefined" && module.exports) {
     if (!items.length) return null;
     var name = myName();
     var st = itemStats(items, name, new Date());
-    return el("button", { class: "strip", type: "button", "aria-label": "Show " + (name ? "your" : "all") + " action items",
+    return el("button", { class: "strip", type: "button", "aria-label": "Show your action items",
       onclick: function () {
-        state.owner = name ? ME : "";
+        state.owner = ME;
         state.adding = false;
         if (location.hash === "#/actions") render(); else location.hash = "#/actions";
       } },
-      el("span", { class: "lbl", text: name ? "Your items" : "All items" }),
+      el("span", { class: "lbl", text: "Your items" }),
       el("span", { text: st.open + " open" }),
       el("span", { class: "muted", text: "·" }),
       el("span", { class: st.overdue ? "od" : "", text: st.overdue + " overdue" }),
@@ -2097,13 +2097,13 @@ if (typeof module !== "undefined" && module.exports) {
     if (s < 86400) return "Synced " + Math.round(s / 3600) + " h ago";
     return "Synced " + new Date(state.lastLoad).toLocaleDateString(undefined, { month: "short", day: "numeric" });
   }
-  /** Open items in your scope: yours when your name is set, otherwise everyone's. */
+  /** Your open items: owned by "Me", or by your name when it is set. */
   function scopeRows(withDone) {
     var name = myName();
-    return allRows().filter(function (r) { return (withDone || !r.item.done) && (!lc(name) || isMine(r.item.owner, name)); });
+    return allRows().filter(function (r) { return (withDone || !r.item.done) && isMine(r.item.owner, name); });
   }
   function showActions() {
-    state.owner = myName() ? ME : "";
+    state.owner = ME;
     state.adding = false;
     if (location.hash === "#/actions") render(); else location.hash = "#/actions";
   }
@@ -2167,10 +2167,11 @@ if (typeof module !== "undefined" && module.exports) {
       el("a", { class: "card stat", href: "#/actions", onclick: function (e) { e.preventDefault(); showActions(); } }, el("b", { text: String(st.open) }), el("span", { text: "Open" })))];
     var rows = [];
     groupItems(scopeRows(), today).forEach(function (g) { rows = rows.concat(g.rows); });
-    nodes.push(el("h2", { text: name ? "My action items" : "Open action items" }));
+    nodes.push(el("h2", { text: "My action items" }));
+    if (!name) nodes.push(el("p", { class: "small muted", style: "margin:-4px 0 10px" }, "Only items assigned to “Me”. ", el("a", { href: "#/settings", text: "Add your name" }), " to include ones with your name."));
     var shown = rows.slice(0, 8);
     nodes.push(shown.length
-      ? el("div", { class: "card rows", style: "margin-bottom:18px" }, shown.map(function (r) { return miniRow(r, today, !name); }),
+      ? el("div", { class: "card rows", style: "margin-bottom:18px" }, shown.map(function (r) { return miniRow(r, today, false); }),
           rows.length > shown.length ? el("a", { class: "rail-more", href: "#/actions", onclick: function (e) { e.preventDefault(); showActions(); }, text: "+ " + (rows.length - shown.length) + " more" }) : null)
       : el("div", { class: "card notice", style: "margin-bottom:18px;padding:16px" }, el("p", { class: "muted", style: "margin:0", text: "Nothing open. Nice." })));
     var dates = upcomingDates(today).slice(0, 5);
@@ -2328,7 +2329,7 @@ if (typeof module !== "undefined" && module.exports) {
     var nodes = [
       el("div", { class: "greet" }, el("h1", { text: hello }),
         el("span", { class: "muted", text: today.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" }) + " · " + plural(todays.length, "meeting") + " today" })),
-      name ? null : el("p", { class: "small muted", style: "margin:-8px 0 16px" }, "Showing everyone’s action items. ", el("a", { href: "#/settings", text: "Add your name in Settings" }), " to see just yours."),
+      name ? null : el("p", { class: "small muted", style: "margin:-8px 0 16px" }, "Showing only items assigned to “Me”. ", el("a", { href: "#/settings", text: "Add your name in Settings" }), " to include ones with your name."),
       el("div", { class: "big-stats" },
         bigStat("s-open", st.open, "Open action items", "check", showActions),
         bigStat("s-od", st.overdue, "Overdue", "alert", showActions),
