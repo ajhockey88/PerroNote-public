@@ -7,7 +7,9 @@ enum WebSync {
     static let enabledKey = "web-sync"
     static let repoKey = "web-sync-repo"
     static let tokenKey = "web-sync-token"
-    private static let stateKey = "web-sync-state"
+    private static let oldStateKey = "web-sync-state"
+    /// Kept per repo, so pointing the app at a different repo never looks like every meeting was deleted.
+    private static var stateKey: String { "web-sync-state:" + repo.lowercased() }
     static let defaultRepo = "ajhockey88/perronote-data"
     static let siteURL = URL(string: "https://ajhockey88.github.io/PerroNote-public/")!
 
@@ -34,7 +36,8 @@ enum WebSync {
 
     private static var state: [String: Seen] {
         get {
-            guard let data = UserDefaults.standard.data(forKey: stateKey) else { return [:] }
+            guard let data = UserDefaults.standard.data(forKey: stateKey)
+                    ?? (repo == defaultRepo ? UserDefaults.standard.data(forKey: oldStateKey) : nil) else { return [:] }
             return (try? JSONDecoder().decode([String: Seen].self, from: data)) ?? [:]
         }
         set { UserDefaults.standard.set(try? JSONEncoder().encode(newValue), forKey: stateKey) }
@@ -170,10 +173,21 @@ enum WebSync {
         }
         local["action-items.json"] = try encoder.encode(store.looseItems)
 
+        // A meeting file that was synced before and is gone from GitHub was deleted on the web.
+        // If GitHub has no meetings at all (a new or emptied repo), nothing is deleted; everything is sent again.
+        let remoteHasMeetings = remote.keys.contains { $0.hasPrefix("meetings/") }
+        var deletedOnWeb: [UUID] = []
+
         for (path, data) in local {
             let localSHA = blobSHA(data)
             let remoteSHA = remote[path]
             let last = seen[path]
+            if remoteSHA == nil, last != nil, remoteHasMeetings, path.hasPrefix("meetings/"),
+               let uuid = UUID(uuidString: String(path.dropFirst("meetings/".count).dropLast(".json".count))) {
+                deletedOnWeb.append(uuid)
+                seen[path] = nil
+                continue
+            }
             let upload: Bool
             if let last, remoteSHA != nil {
                 if last.local != localSHA { upload = true }          // edited on the phone
@@ -208,6 +222,9 @@ enum WebSync {
                 outcome.received += 1
             }
         }
+
+        for id in deletedOnWeb { store.delete(id) }
+        outcome.received += deletedOnWeb.count
 
         // Meetings deleted on the phone come off the web too.
         for (path, sha) in remote where path.hasPrefix("meetings/") && local[path] == nil {
