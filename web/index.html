@@ -340,12 +340,19 @@ details.fold > summary { cursor: pointer; font-size: 13px; text-transform: upper
 .add-chip { border: 1px dashed var(--border); background: transparent; border-radius: 999px; padding: 5px 13px; font-size: 14px; color: var(--muted); cursor: pointer; }
 .add-chip:hover { color: var(--accent); border-color: var(--accent); }
 .add-person { width: 200px !important; border-radius: 999px !important; padding: 5px 12px !important; }
+.tag-chips { gap: 6px; }
+.tchip { display: inline-flex; align-items: center; gap: 2px; font-size: 13px; padding: 3px 4px 3px 11px; }
+.tchip .x { border: 0; background: transparent; color: inherit; cursor: pointer; padding: 0 5px; font-size: 11px; opacity: 0.55; }
+.tchip .x:hover, .tchip .x:focus { opacity: 1; }
+.add-chip.sm { font-size: 13px; padding: 3px 11px; }
+.add-person.sm { width: 150px !important; padding: 3px 11px !important; font-size: 13px; }
 .section.summary { background: linear-gradient(135deg, var(--accent-soft), transparent 65%), var(--surface); border-color: color-mix(in srgb, var(--accent) 28%, var(--border)); }
 .section.summary h2 { color: var(--accent-strong); }
 @media (prefers-color-scheme: dark) { .section.summary h2 { color: var(--accent); } }
 .section h2 .count { font-weight: 600; background: var(--surface-2); color: var(--muted); border-radius: 999px; padding: 0 8px; font-size: 12px; letter-spacing: 0; margin-left: 6px; }
 .chip { white-space: nowrap; text-decoration: none; }
 .chip-x { margin-left: 6px; opacity: 0.8; }
+.chips-label { font-size: 12px; font-weight: 650; color: var(--muted); align-self: center; margin-right: 2px; }
 .date-pick { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; border: 0; padding: 0; }
 .pick-wrap { position: relative; display: inline-flex; }
 .filter-note { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); margin: -6px 0 12px; }
@@ -1842,21 +1849,14 @@ if (typeof module !== "undefined" && module.exports) {
     }
     function drawChips() {
       chips.replaceChildren();
-      if (desk) {
-        chips.classList.toggle("hidden", !state.tag);
-        if (state.tag) {
-          chips.className = "filter-note";
-          chips.append(el("span", { text: "Tag" }), el("span", { class: "tag", text: state.tag }),
-            el("button", { class: "btn ghost", type: "button", style: "padding:2px 8px;font-size:13px", text: "Clear",
-              onclick: function () { state.tag = null; refreshSides(); } }));
-        }
-        return;
-      }
       if (!tags.length) { chips.classList.add("hidden"); return; }
-      chips.append(el("button", { type: "button", class: "chip" + (state.tag ? "" : " active"), text: "All tags", onclick: function () { state.tag = null; drawChips(); fill(); } }));
+      // On desktop the sidebar shows the tag too, so redraw it along with the list.
+      function pick(t) { state.tag = t; if (desk) refreshSides(); else { drawChips(); fill(); } }
+      chips.append(el("span", { class: "chips-label", text: "Tags" }));
+      chips.append(el("button", { type: "button", class: "chip" + (state.tag ? "" : " active"), text: "All tags", onclick: function () { pick(null); } }));
       tags.forEach(function (t) {
         chips.append(el("button", { type: "button", class: "chip" + (state.tag === t ? " active" : ""), text: t,
-          onclick: function () { state.tag = state.tag === t ? null : t; drawChips(); fill(); } }));
+          onclick: function () { pick(state.tag === t ? null : t); } }));
       });
       chips.append(el("a", { class: "chip manage", href: "#/tags", text: "Manage tags" }));
     }
@@ -2452,6 +2452,49 @@ if (typeof module !== "undefined" && module.exports) {
     draw(false);
     return el("section", { class: "card section" }, el("h2", null, "Attendees", count), box);
   }
+  /** The meeting's tags as chips under the date: ✕ removes one, + Add tag types one (suggests tags already in use). */
+  function tagChips() {
+    var fm = page.form;
+    var list = fm.tags.split(",").map(function (t) { return t.trim(); }).filter(Boolean);
+    var box = el("div", { class: "people-chips tag-chips" });
+    function save() { fm.tags = list.join(", "); updateSaveUI(); }
+    function draw(adding) {
+      box.replaceChildren();
+      list.forEach(function (t, i) {
+        box.append(el("span", { class: "tag tchip" }, t,
+          el("button", { class: "x", type: "button", "aria-label": "Remove tag " + t, title: "Remove", text: "✕",
+            onclick: function () { list.splice(i, 1); save(); draw(false); } })));
+      });
+      if (!adding) {
+        box.append(el("button", { class: "add-chip sm", type: "button", text: list.length ? "+ Add tag" : "+ Add a tag", onclick: function () { draw(true); } }));
+        return;
+      }
+      var have = new Set(list.map(lc));
+      var known = Object.keys(tagCountsOf(meetings())).filter(function (t) { return !have.has(lc(t)); }).sort(function (a, b) { return a.localeCompare(b); });
+      var inp = el("input", { type: "text", class: "add-person sm", placeholder: "Tag", list: "tagSuggest", "aria-label": "Add tag", autocomplete: "off" });
+      var dl = el("datalist", { id: "tagSuggest" }, known.map(function (t) { return el("option", { value: t }); }));
+      var finished = false;
+      function commit(again) {
+        if (finished) return;
+        finished = true;
+        var v = inp.value.replace(/,/g, " ").replace(/\s+/g, " ").trim();
+        if (v && !have.has(lc(v))) {
+          var existing = known.find(function (t) { return lc(t) === lc(v); });
+          list.push(existing || v); save();
+        }
+        draw(again);
+      }
+      inp.addEventListener("keydown", function (e) {
+        if (e.key === "Enter" || e.key === ",") { e.preventDefault(); commit(!!inp.value.trim()); }
+        else if (e.key === "Escape") { e.preventDefault(); finished = true; draw(false); }
+      });
+      inp.addEventListener("blur", function () { setTimeout(function () { if (inp.isConnected) commit(false); }, 120); });
+      box.append(inp, dl);
+      setTimeout(function () { inp.focus(); }, 0);
+    }
+    draw(false);
+    return el("div", { style: "margin:0 0 16px" }, box);
+  }
   function mountMeeting(nodes) {
     if (isDesktop()) mount(splitLayout(nodes, route().id), "split");
     else mount(nodes);
@@ -2678,12 +2721,10 @@ if (typeof module !== "undefined" && module.exports) {
     var title = el("input", { type: "text", class: "title-input", value: fm.title, placeholder: "Meeting title", "aria-label": "Title" });
     title.addEventListener("input", function () { fm.title = title.value; updateSaveUI(); });
     nodes.push(title);
-    nodes.push(el("div", { class: "meta", style: "margin:2px 0 14px" },
+    nodes.push(el("div", { class: "meta", style: "margin:2px 0 10px" },
       el("span", { text: fmtDate(d.date) }),
       formatDuration(d.duration) ? el("span", { text: formatDuration(d.duration) }) : null));
-    var tags = el("input", { type: "text", value: fm.tags, placeholder: "Tags, separated by commas", "aria-label": "Tags" });
-    tags.addEventListener("input", function () { fm.tags = tags.value; updateSaveUI(); });
-    nodes.push(el("div", { style: "margin-bottom:14px" }, tags));
+    nodes.push(tagChips());
 
     if (!fm.hasNotes) {
       nodes.push(el("div", { class: "card notice" }, el("p", { class: "muted", text: "Notes not written yet." })));
