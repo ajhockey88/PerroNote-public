@@ -56,6 +56,52 @@ enum WidgetStore {
         return (ours + [group]).filter { seen.insert($0).inserted }
     }
 
+    /// How the app and its widget part were signed: bundle ID, the profile's groups and the signature's groups.
+    /// A widget whose signature asks for a group its profile doesn't allow is never started by iOS.
+    static func signingReport() -> String {
+        func describe(_ name: String, _ bundleURL: URL?) -> String {
+            guard let bundleURL, let bundle = Bundle(url: bundleURL) else { return "\(name): missing" }
+            let id = bundle.bundleIdentifier ?? "?"
+            var profile = "no profile"
+            if let data = try? Data(contentsOf: bundleURL.appendingPathComponent("embedded.mobileprovision")) {
+                let ents = entitlementDicts(in: data)
+                let groups = ents.flatMap { $0["com.apple.security.application-groups"] as? [String] ?? [] }
+                let appID = ents.compactMap { $0["application-identifier"] as? String }.first ?? "?"
+                profile = "profile \(appID) groups [\(groups.joined(separator: ", "))]"
+            }
+            var signed = "no signature found"
+            if let exe = bundle.executableURL, let handle = try? FileHandle(forReadingFrom: exe) {
+                let size = (try? handle.seekToEnd()) ?? 0
+                try? handle.seek(toOffset: size > 3_000_000 ? size - 3_000_000 : 0)
+                if let tail = try? handle.readToEnd() {
+                    let ents = entitlementDicts(in: tail).filter { $0["application-identifier"] != nil || $0["com.apple.security.application-groups"] != nil }
+                    let groups = ents.flatMap { $0["com.apple.security.application-groups"] as? [String] ?? [] }
+                    let appID = ents.compactMap { $0["application-identifier"] as? String }.first ?? "none"
+                    signed = "signed \(appID) groups [\(groups.joined(separator: ", "))]"
+                }
+                try? handle.close()
+            }
+            return "\(name) \(id): \(profile); \(signed)"
+        }
+        return [describe("App", Bundle.main.bundleURL),
+                describe("Widget", Bundle.main.builtInPlugInsURL?.appendingPathComponent("PerroNoteWidgets.appex"))]
+            .joined(separator: "\n\n")
+    }
+
+    private static func entitlementDicts(in data: Data) -> [[String: Any]] {
+        let start = Data("<?xml".utf8), end = Data("</plist>".utf8)
+        var out: [[String: Any]] = []
+        var from = data.startIndex
+        while let s = data.range(of: start, in: from..<data.endIndex),
+              let e = data.range(of: end, in: s.upperBound..<data.endIndex) {
+            from = e.upperBound
+            guard let plist = try? PropertyListSerialization.propertyList(from: data[s.lowerBound..<e.upperBound], format: nil),
+                  let dict = plist as? [String: Any] else { continue }
+            out.append(dict["Entitlements"] as? [String: Any] ?? dict)
+        }
+        return out
+    }
+
     /// Pulls the app group names out of each XML plist found inside some bytes.
     private static func groups(inPlistWithin data: Data) -> [String] {
         let start = Data("<?xml".utf8), end = Data("</plist>".utf8)
