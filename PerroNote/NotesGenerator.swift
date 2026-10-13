@@ -88,8 +88,12 @@ enum NotesGenerator {
     - Topics: group the discussion by core discussion point. Each topic has a short title (2 to 6 \
     words) naming the subject and a few concise bullets with the key points, even if the subject \
     came up several times in different parts of the meeting; bring those parts together under one \
-    topic. Order topics by importance or first mention. Typically 2 to 7 topics; do not make a \
-    topic for small talk. Leave out the discussion field.
+    topic. Order topics by importance or first mention. A short meeting has 2 to 7 topics. The \
+    length of the meeting is given; for longer ones scale up, about one topic for every 5 minutes of \
+    real discussion (an hour is typically 10 to 14 topics) and up to 6 points per topic when there \
+    is that much to say. The notes should stay proportional to the meeting: a long meeting must not be \
+    squeezed into the same few bullets as a short one, and every distinct subject, decision and \
+    commitment should appear. Do not make a topic for small talk. Leave out the discussion field.
     - Decisions: things the group agreed or decided.
     - Action items: concrete tasks someone committed to or was asked to do. Give the owner \
     when the transcript makes it clear, otherwise leave it out. Give a due date only if one was \
@@ -213,6 +217,9 @@ enum NotesGenerator {
         if text.contains("Speaker 1:") && !voicesIdentified {
             userMessage += "Speakers are labelled Speaker 1, Speaker 2 and so on because nobody has said who is who yet.\n"
         }
+        let words = text.split(whereSeparator: \.isWhitespace).count
+        let minutes = max(1, words / 130)
+        userMessage += "Length: about \(words) words, roughly \(minutes) minutes of speech.\n"
         if let template {
             userMessage += "\nNotes template (\(template.name)). Follow these instructions for the shape of the notes:\n\(template.instructions)\n"
         }
@@ -221,7 +228,7 @@ enum NotesGenerator {
         let body: [String: Any] = [
             "model": model,
             "max_tokens": 16000,
-            "output_config": ["effort": "low"],
+            "output_config": ["effort": words > 3500 ? "medium" : "low"],
             "system": systemPrompt,
             "tools": [tool],
             "tool_choice": ["type": "auto"],
