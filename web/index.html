@@ -201,6 +201,7 @@ label.field > span { display: block; font-size: 13px; font-weight: 600; margin-b
 @media (min-width: 641px) { .cal-day .dots { display: none; } }
 .cal-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
 .cal-dot.mtg { background: var(--muted); }
+.tcard.done .task { text-decoration: line-through; opacity: .55; }
 .brow { display: flex; gap: 6px; align-items: flex-start; margin-bottom: 0; }
 .brow .bul { font-size: 18px; flex: 0 0 18px; text-align: center; padding-top: 4px; color: var(--accent-strong); font-weight: 700; line-height: 1.5; }
 .brow.sub { margin-left: 26px; }
@@ -2071,9 +2072,9 @@ if (typeof module !== "undefined" && module.exports) {
     return "Synced " + new Date(state.lastLoad).toLocaleDateString(undefined, { month: "short", day: "numeric" });
   }
   /** Open items in your scope: yours when your name is set, otherwise everyone's. */
-  function scopeRows() {
+  function scopeRows(withDone) {
     var name = myName();
-    return allRows().filter(function (r) { return !r.item.done && (!lc(name) || isMine(r.item.owner, name)); });
+    return allRows().filter(function (r) { return (withDone || !r.item.done) && (!lc(name) || isMine(r.item.owner, name)); });
   }
   function showActions() {
     state.owner = myName() ? ME : "";
@@ -2089,7 +2090,7 @@ if (typeof module !== "undefined" && module.exports) {
     cb.disabled = true;
     var ok = await toggleItem(r.path, r.item.id, done);
     if (!ok) { cb.checked = !done; cb.disabled = false; return; }
-    if (route().name === "home") { var y = window.scrollY; renderHome(); window.scrollTo(0, y); }
+    if (route().name === "home") { var y = window.scrollY; renderHome(); window.scrollTo(0, y); renderSidebar(route()); }
     else refreshSides();
   }
   function tickBox(r, rowEl) {
@@ -2238,7 +2239,7 @@ if (typeof module !== "undefined" && module.exports) {
     var thisWeek = all.filter(function (m) { return matchesDateFilter(new Date(m.data.date), "thisWeek", today); });
     var st = itemStats(allRows().map(function (r) { return r.item; }), name, today);
 
-    var mine = scopeRows();
+    var mine = scopeRows(true);
     var cols = { overdue: [], today: [], soon: [] };
     mine.forEach(function (r) {
       var d = parseDue(r.item.due);
@@ -2249,7 +2250,7 @@ if (typeof module !== "undefined" && module.exports) {
       else if (diff <= 7) cols.soon.push(r);
     });
     Object.keys(cols).forEach(function (k) {
-      cols[k].sort(function (a, b) { return (parseDue(a.item.due) - parseDue(b.item.due)) || (b.meetingTime - a.meetingTime); });
+      cols[k].sort(function (a, b) { return (!!a.item.done - !!b.item.done) || (parseDue(a.item.due) - parseDue(b.item.due)) || (b.meetingTime - a.meetingTime); });
     });
 
     function bigStat(cls, n, label, ic, onclick) {
@@ -2258,7 +2259,7 @@ if (typeof module !== "undefined" && module.exports) {
     function tcard(r) {
       var d = parseDue(r.item.due);
       var owner = splitOwners(r.item.owner)[0];
-      var card = el("div", { class: "card tcard" });
+      var card = el("div", { class: "card tcard" + (r.item.done ? " done" : "") });
       card.append(tickBox(r, card), el("div", { class: "body" },
         el("div", { class: "task", text: r.item.task || "(no task)" }),
         el("div", { class: "meta" }, owner ? avatar(canonPerson(owner, name), "sm") : null, meetingLinkOf(r),
@@ -2973,6 +2974,16 @@ if (typeof module !== "undefined" && module.exports) {
     if (path !== LOOSE) obj.updated = new Date().toISOString();
     try {
       await putFile(path, obj, f.sha, path === LOOSE ? "action items" : (obj.title || "meeting"));
+      if (page && !page.gone && page.path === path && path !== LOOSE) {
+        // keep the open meeting editor in step so its checkbox matches
+        page.baseSha = state.files.get(path).sha;
+        page.baseData = clone(obj);
+        [page.form, page.initialForm].forEach(function (fm) {
+          var x = fm.items.find(function (y) { return y.id === id; });
+          if (x) x.done = done;
+        });
+        page.baselineJSON = JSON.stringify(applyForm(clone(obj), page.initialForm));
+      }
       return true;
     } catch (e) {
       if (e.status === 409) {
@@ -3021,7 +3032,7 @@ if (typeof module !== "undefined" && module.exports) {
             cb.disabled = true;
             row.classList.toggle("done", cb.checked);
             var ok = await toggleItem(r.path, r.item.id, cb.checked);
-            if (location.hash === hash) { var y = window.scrollY; rerender(); window.scrollTo(0, y); }
+            if (location.hash === hash) { var y = window.scrollY; rerender(); window.scrollTo(0, y); renderSidebar(route()); }
             if (!ok) { cb.checked = !cb.checked; cb.disabled = false; }
           });
           row.append(cb, el("div", { class: "body" },
