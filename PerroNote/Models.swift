@@ -121,7 +121,9 @@ struct MeetingNotes: Codable, Hashable {
     /// Attendees without voice labels and without repeats (ignoring case), in their first order.
     mutating func cleanAttendees() {
         var seen = Set<String>()
+        attendees = attendees.map(AliasBook.canonical)
         attendees = attendees.filter { !Self.isSpeakerLabel($0) && seen.insert($0.lowercased()).inserted }
+        for i in actionItems.indices { if let o = actionItems[i].owner { actionItems[i].owner = AliasBook.canonical(o) } }
         consolidateAttendees()
     }
 
@@ -157,7 +159,8 @@ struct MeetingNotes: Codable, Hashable {
         func has(_ name: String) -> Bool { attendees.contains { $0.caseInsensitiveCompare(name) == .orderedSame } }
         var unnamed: [DetectedVoice] = []
         for voice in voices {
-            if let name = voice.name ?? voice.mentionedName {
+            if let raw = voice.name ?? voice.mentionedName {
+                let name = AliasBook.canonical(raw)
                 if !has(name) { attendees.append(name) }
             } else {
                 unnamed.append(voice)

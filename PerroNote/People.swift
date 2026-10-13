@@ -7,6 +7,17 @@ struct Person: Codable, Identifiable, Hashable {
     var name: String
     var voice: [Float]?
     var voiceSamples = 0
+    /// Other ways this person gets called, like a last name or initials.
+    var aliases: [String]?
+}
+
+/// Looks up the full name behind a nickname, last name or other alias. Kept in step by PeopleStore.
+enum AliasBook {
+    static var map: [String: String] = [:]
+
+    static func canonical(_ name: String) -> String {
+        map[name.trimmingCharacters(in: .whitespaces).lowercased()] ?? name
+    }
 }
 
 enum VoiceMath {
@@ -43,7 +54,28 @@ final class PeopleStore: ObservableObject {
         set { UserDefaults.standard.set(newValue, forKey: Self.rememberKey); objectWillChange.send() }
     }
 
-    init() { load() }
+    init() { load(); rebuildAliases() }
+
+    private func rebuildAliases() {
+        var map: [String: String] = [:]
+        for p in people { for a in p.aliases ?? [] { map[a.trimmingCharacters(in: .whitespaces).lowercased()] = p.name } }
+        AliasBook.map = map
+    }
+
+    func setAliases(_ id: UUID, _ aliases: [String]) {
+        guard let i = people.firstIndex(where: { $0.id == id }) else { return }
+        var seen = Set<String>()
+        let clean = aliases.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty && $0.caseInsensitiveCompare(people[i].name) != .orderedSame && seen.insert($0.lowercased()).inserted }
+        people[i].aliases = clean.isEmpty ? nil : clean
+        save()
+    }
+
+    /// Remembers an old name as another way to say this person, e.g. after a rename.
+    func addAlias(_ alias: String, to name: String) {
+        guard let p = people.first(where: { $0.name.caseInsensitiveCompare(name) == .orderedSame }) else { return }
+        setAliases(p.id, (p.aliases ?? []) + [alias])
+    }
 
     func person(_ id: UUID?) -> Person? {
         guard let id else { return nil }
@@ -127,6 +159,7 @@ final class PeopleStore: ObservableObject {
     }
 
     private func save() {
+        rebuildAliases()
         guard let data = try? JSONEncoder().encode(people) else { return }
         try? data.write(to: Self.url, options: .atomic)
     }

@@ -363,6 +363,7 @@ final class MeetingStore: ObservableObject {
         for voice in m.voices ?? [] {
             if let old = oldLabels[voice.id], old != voice.label { renames[old] = voice.label }
         }
+        for (old, new) in renames where !MeetingNotes.isSpeakerLabel(old) { people.addAlias(old, to: new) }
         // An attendee edited in the list: pair removed and added names so the old one is replaced, not kept beside the new one.
         func isIn(_ list: [String], _ name: String) -> Bool { list.contains { $0.caseInsensitiveCompare(name) == .orderedSame } }
         let removedNames = previousNames.filter { !isIn(attendeeNames, $0) && !MeetingNotes.isSpeakerLabel($0) }

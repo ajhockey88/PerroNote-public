@@ -90,6 +90,42 @@ struct PersonView: View {
             .sorted { $0.date > $1.date }
     }
 
+    @EnvironmentObject private var peopleStore: PeopleStore
+    @State private var newAlias = ""
+
+    private var saved: Person? { peopleStore.people.first { $0.name.caseInsensitiveCompare(name) == .orderedSame } }
+
+    /// Other ways this person is called. Notes and action items using any of them count as this person.
+    @ViewBuilder private var aliasSection: some View {
+        if let person = saved {
+            Section {
+                ForEach(person.aliases ?? [], id: \.self) { alias in Text(alias) }
+                    .onDelete { offsets in
+                        var list = person.aliases ?? []
+                        list.remove(atOffsets: offsets)
+                        peopleStore.setAliases(person.id, list)
+                    }
+                HStack {
+                    TextField("Add a name, like a last name", text: $newAlias)
+                        .textInputAutocapitalization(.words).autocorrectionDisabled()
+                        .submitLabel(.done)
+                        .onSubmit(addAlias)
+                    Button("Add", action: addAlias).disabled(newAlias.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+            } header: {
+                Text("Also called")
+            } footer: {
+                Text("A name here is turned into \(person.name) in new notes, attendee lists and action item owners.")
+            }
+        }
+    }
+
+    private func addAlias() {
+        guard let person = saved else { return }
+        peopleStore.setAliases(person.id, (person.aliases ?? []) + [newAlias])
+        newAlias = ""
+    }
+
     private var talkTime: Double {
         store.meetings.reduce(0) { sum, m in
             sum + (m.voices ?? []).filter { $0.name?.caseInsensitiveCompare(name) == .orderedSame }.reduce(0) { $0 + $1.talkTime }
@@ -108,6 +144,8 @@ struct PersonView: View {
                     if talkTime > 0 { stat(formatDuration(talkTime), "talking") }
                 }
             }
+
+            aliasSection
 
             Section("Open action items") {
                 if open.isEmpty {

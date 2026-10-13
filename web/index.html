@@ -711,9 +711,11 @@ function alignSubs(oldPoints, oldSubs, newPoints) {
 function lc(s) { return String(s == null ? "" : s).trim().toLowerCase(); }
 
 /** "Me" becomes your name when it is set. */
+var ALIAS_MAP = {};
 function canonPerson(name, myName) {
   var t = String(name == null ? "" : name).trim().replace(/\s+/g, " ");
   if (!t) return "";
+  if (ALIAS_MAP[t.toLowerCase()]) t = ALIAS_MAP[t.toLowerCase()];
   var full = String(myName || "").trim().replace(/\s+/g, " ");
   if (full) {
     var low = t.toLowerCase();
@@ -1202,6 +1204,14 @@ if (typeof module !== "undefined" && module.exports) {
       toast("Recipients saved here, but not synced to the phone yet.", true);
     }
   }
+  /** Nicknames and last names saved on the phone, so notes using them count as the full name. */
+  function loadAliases() {
+    var f = state.files.get("people.json"), map = {};
+    if (f && Array.isArray(f.data)) f.data.forEach(function (p) {
+      if (p && p.name && Array.isArray(p.aliases)) p.aliases.forEach(function (a) { if (a) map[String(a).trim().toLowerCase()] = p.name; });
+    });
+    ALIAS_MAP = map;
+  }
   function adoptRecipients() {
     var f = state.files.get(RCPT_FILE);
     if (f && Array.isArray(f.data)) {
@@ -1399,6 +1409,7 @@ if (typeof module !== "undefined" && module.exports) {
           state.files = next;
           state.empty = false;
           adoptRecipients();
+          loadAliases();
         }
         state.loaded = true;
         state.error = null;

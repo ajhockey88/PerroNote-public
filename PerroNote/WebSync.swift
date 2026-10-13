@@ -254,13 +254,13 @@ enum WebSync {
         return outcome
     }
 
-    private struct PersonName: Codable { var name: String }
+    private struct PersonName: Codable { var name: String; var aliases: [String]? }
 
     /// The saved people by name only; voice prints never leave the phone.
     @MainActor
     private static func peopleData(_ store: MeetingStore) throws -> Data {
-        let names = (store.people?.people ?? []).map(\.name).sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
-        return try encoder.encode(names.map { PersonName(name: $0) })
+        let list = (store.people?.people ?? []).sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        return try encoder.encode(list.map { PersonName(name: $0.name, aliases: $0.aliases) })
     }
 
     private static func recipientData() throws -> Data {
