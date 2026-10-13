@@ -122,6 +122,30 @@ struct MeetingNotes: Codable, Hashable {
     mutating func cleanAttendees() {
         var seen = Set<String>()
         attendees = attendees.filter { !Self.isSpeakerLabel($0) && seen.insert($0.lowercased()).inserted }
+        consolidateAttendees()
+    }
+
+    /// "Anthony" and "Anthony Perrone" are one person: a first name on its own folds into the one full name that starts with it.
+    /// When several full names share it, it folds into yours (from Settings) if that is one of them, otherwise it is left alone.
+    mutating func consolidateAttendees() {
+        let me = (UserDefaults.standard.string(forKey: BannerSettings.myNameKey) ?? "").trimmingCharacters(in: .whitespaces)
+        func first(_ n: String) -> String { n.split(separator: " ").first.map { String($0).lowercased() } ?? "" }
+        func isFull(_ n: String) -> Bool { n.split(separator: " ").count > 1 }
+        var merged: [String: String] = [:]
+        for short in attendees where !isFull(short) {
+            let candidates = attendees.filter { isFull($0) && first($0) == short.lowercased() }
+            let target: String?
+            if candidates.count == 1 { target = candidates[0] }
+            else if let mine = candidates.first(where: { $0.caseInsensitiveCompare(me) == .orderedSame }) { target = mine }
+            else { target = nil }
+            if let target { merged[short] = target }
+        }
+        guard !merged.isEmpty else { return }
+        attendees.removeAll { merged[$0] != nil }
+        for i in actionItems.indices {
+            guard let owner = actionItems[i].owner, let full = merged[owner] else { continue }
+            actionItems[i].owner = full
+        }
     }
 
     /// Cleans the attendees, then makes sure every voice is accounted for: by its name, by the name the
@@ -139,6 +163,7 @@ struct MeetingNotes: Codable, Hashable {
                 unnamed.append(voice)
             }
         }
+        consolidateAttendees()
         let missing = voices.count - attendees.count
         guard missing > 0 else { return }
         attendees += unnamed.prefix(missing).map(\.label)
