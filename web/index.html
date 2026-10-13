@@ -97,8 +97,9 @@ header.top {
 .icon-btn.spin svg { animation: spin 0.9s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (max-width: 560px) {
-  .tabs { order: 3; width: 100%; }
-  .tab { flex: 1; text-align: center; }
+  .tabs { order: 3; width: 100%; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tab { flex: 1 0 auto; text-align: center; padding: 5px 10px; }
 }
 
 main { max-width: 860px; margin: 0 auto; padding: 20px 16px 80px; }
@@ -141,6 +142,7 @@ label.field > span { display: block; font-size: 13px; font-weight: 600; margin-b
 
 /* Meetings list */
 .search-row { display: flex; gap: 10px; margin-bottom: 12px; }
+.search-row .btn { flex: none; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px; }
 .chip {
   border: 1px solid var(--border); background: var(--surface); border-radius: 999px; padding: 3px 11px; font-size: 13px; cursor: pointer; color: var(--muted);
@@ -163,7 +165,7 @@ label.field > span { display: block; font-size: 13px; font-weight: 600; margin-b
   padding: 10px 0; margin: -10px 0 8px; background: var(--bg);
 }
 @media (max-width: 560px) { .toolbar { top: 99px; } }
-.toolbar .status { margin-left: auto; font-size: 13px; color: var(--muted); }
+.toolbar .status { margin-left: auto; font-size: 13px; color: var(--muted); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .toolbar .status.dirty { color: var(--accent-strong); font-weight: 600; }
 .title-input {
   font-size: 24px !important; font-weight: 700; letter-spacing: -0.02em; border: 1px solid transparent !important; background: transparent !important; padding: 4px 8px !important; margin-left: -8px; width: calc(100% + 16px) !important;
@@ -247,6 +249,83 @@ label.field > span { display: block; font-size: 13px; font-weight: 600; margin-b
 #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); pointer-events: auto; }
 #toast.error { background: var(--red); color: #fff; }
 .loading { display: flex; align-items: center; gap: 10px; justify-content: center; padding: 40px 0; color: var(--muted); }
+/* Summary strip */
+.strip {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap; width: 100%; text-align: left; padding: 10px 14px; margin: -4px 0 14px;
+  cursor: pointer; font-size: 14px; border: 1px solid var(--border); background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow);
+}
+.strip:hover { border-color: var(--accent); }
+.strip .lbl { color: var(--muted); font-weight: 600; font-size: 13px; }
+.strip .od { color: var(--red); font-weight: 600; }
+.strip .td { color: var(--orange); font-weight: 600; }
+.strip .go { margin-left: auto; color: var(--muted); }
+
+/* Share menu */
+.share-wrap { position: relative; }
+.menu {
+  position: absolute; right: 0; top: calc(100% + 6px); z-index: 30; width: min(280px, calc(100vw - 32px)); padding: 12px;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.menu label.field { margin-bottom: 6px; }
+.menu .btn { width: 100%; justify-content: flex-start; }
+.menu .small a { color: var(--muted); }
+
+/* Select mode and bulk */
+.meeting-card.selectable { display: flex; gap: 12px; align-items: flex-start; cursor: pointer; }
+.meeting-card.selectable .check { margin-top: 1px; }
+.meeting-card.selected { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.meeting-card .grow { min-width: 0; flex: 1; }
+.select-bar { padding: 12px 14px; margin-bottom: 14px; display: flex; flex-direction: column; gap: 10px; }
+.select-bar .line { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.select-bar .line input, .select-bar .line select { flex: 1 1 140px; width: auto; min-width: 0; }
+.bulk-msg { padding: 12px 14px; margin-bottom: 14px; font-size: 14px; }
+.bulk-msg ul { margin: 6px 0 0; padding-left: 20px; }
+.bulk-msg.error-box { border-color: color-mix(in srgb, var(--red) 40%, var(--border)); }
+.chip.manage { border-style: dashed; }
+
+/* Lists of people, dates, tags */
+.lrow { display: flex; gap: 12px; padding: 12px 16px; border-top: 1px solid var(--border); align-items: center; text-decoration: none; }
+.lrow:first-child { border-top: 0; }
+a.lrow:hover .name { color: var(--accent); }
+.lrow .body { min-width: 0; flex: 1; }
+.lrow .name, .lrow .text { overflow-wrap: anywhere; }
+.lrow .name { font-weight: 600; }
+.lrow .meta a { color: var(--muted); text-decoration: underline; text-decoration-color: var(--border); text-underline-offset: 2px; }
+.lrow .meta a:hover { color: var(--accent); }
+.lrow .acts { display: flex; gap: 6px; flex: none; }
+.lrow .acts .btn { padding: 6px 10px; font-size: 13px; }
+.when.today { color: var(--orange); font-weight: 600; }
+.when.soon { color: var(--blue); font-weight: 600; }
+details.fold { margin: 10px 0 18px; }
+details.fold > summary { cursor: pointer; font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 650; margin-bottom: 10px; }
+.page-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.page-head h1 { margin-right: auto; }
+.danger-zone { margin-top: 28px; padding-top: 18px; border-top: 1px solid var(--border); }
+.btn.danger { border-color: color-mix(in srgb, var(--red) 35%, var(--border)); }
+.recip-list { margin: 0 0 12px; }
+.recip-form { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; }
+@media (max-width: 560px) { .recip-form { grid-template-columns: 1fr; } }
+
+/* Print */
+#printView { display: none; }
+.pv { color: #000; background: #fff; font: 11pt/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; }
+.pv .pv-title { font-size: 20pt; font-weight: 700; margin: 0 0 2px; }
+.pv .pv-date { color: #555; margin: 0 0 12px; }
+.pv .pv-h { font-size: 13pt; font-weight: 700; margin: 16px 0 4px; color: #b84617; break-after: avoid; page-break-after: avoid; }
+.pv .pv-h3 { font-weight: 700; margin: 8px 0 2px; }
+.pv p { margin: 0 0 6px; }
+.pv ul { margin: 2px 0; padding-left: 22px; }
+.pv ul.plain { list-style: none; padding-left: 0; }
+.pv li { margin: 1px 0; break-inside: avoid; }
+@media print {
+  header.top, #toast, .toolbar, .btn, button, .strip, .select-bar, .no-print { display: none !important; }
+  html, body { background: #fff !important; color: #000 !important; }
+  main { padding: 0; max-width: none; }
+  .card { box-shadow: none !important; }
+  input, textarea, select { border: 0 !important; background: transparent !important; box-shadow: none !important; }
+  body.print-notes #app { display: none !important; }
+  body.print-notes #printView { display: block !important; }
+}
 .spinner { width: 18px; height: 18px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
 </style>
 </head>
@@ -257,6 +336,8 @@ label.field > span { display: block; font-size: 13px; font-weight: 600; margin-b
     <nav class="tabs" id="tabs">
       <a class="tab" href="#/" data-tab="meetings">Meetings</a>
       <a class="tab" href="#/actions" data-tab="actions">Action items</a>
+      <a class="tab" href="#/people" data-tab="people">People</a>
+      <a class="tab" href="#/dates" data-tab="dates">Dates &amp; risks</a>
     </nav>
     <div class="top-actions">
       <button class="icon-btn" id="refreshBtn" type="button" title="Refresh" aria-label="Refresh">
@@ -269,6 +350,7 @@ label.field > span { display: block; font-size: 13px; font-weight: 600; margin-b
   </div>
 </header>
 <main id="app"></main>
+<div id="printView" class="pv" aria-hidden="true"></div>
 <div id="toast" role="status" aria-live="polite"></div>
 
 <script id="helpers">
@@ -393,10 +475,397 @@ function alignSubs(oldPoints, oldSubs, newPoints) {
   return subs.some(function (s) { return s.length; }) ? subs : undefined;
 }
 
+// ---------- people ----------
+function lc(s) { return String(s == null ? "" : s).trim().toLowerCase(); }
+
+/** "Me" becomes your name when it is set. */
+function canonPerson(name, myName) {
+  var t = String(name == null ? "" : name).trim().replace(/\s+/g, " ");
+  if (!t) return "";
+  var full = String(myName || "").trim().replace(/\s+/g, " ");
+  if (full) {
+    var low = t.toLowerCase();
+    if (low === "me" || low === full.toLowerCase() || low === full.split(" ")[0].toLowerCase()) return full;
+  }
+  return t;
+}
+
+/** True when an owner string (possibly several people) includes you: "me", your full name or your first name. */
+function isMine(owner, myName) {
+  var names = ["me"];
+  var full = lc(myName);
+  if (full) { names.push(full); names.push(full.split(/\s+/)[0]); }
+  return splitOwners(owner).some(function (o) { return names.indexOf(lc(o)) >= 0; });
+}
+
+/** True when the owner string includes the person with this lower-case key. */
+function personOwns(owner, key, myName) {
+  if (lc(myName) && key === lc(myName)) return isMine(owner, myName);
+  return splitOwners(owner).some(function (o) { return lc(canonPerson(o, myName)) === key; });
+}
+
+function strList(a) {
+  return (Array.isArray(a) ? a : []).map(function (s) { return String(s == null ? "" : s).trim(); }).filter(Boolean);
+}
+function notesItems(d) {
+  var n = d && d.notes && typeof d.notes === "object" ? d.notes : null;
+  return n && Array.isArray(n.actionItems) ? n.actionItems.filter(Boolean) : [];
+}
+
+/** True when the person attended the meeting or owns one of its action items. */
+function personInMeeting(d, key, myName) {
+  var n = d && d.notes && typeof d.notes === "object" ? d.notes : {};
+  if (strList(n.attendees).some(function (a) { return lc(canonPerson(a, myName)) === key; })) return true;
+  return notesItems(d).some(function (a) { return personOwns(a.owner, key, myName); });
+}
+
+/** Everyone in attendees and owners, deduped case-insensitively, with meeting and open item counts, sorted by name. */
+function buildPeople(meetingDatas, loose, myName) {
+  var map = {};
+  function add(raw) {
+    var name = canonPerson(raw, myName);
+    if (!name) return;
+    var k = name.toLowerCase();
+    if (!map[k]) map[k] = { name: name, key: k, meetings: 0, open: 0 };
+    else if (map[k].name === map[k].name.toLowerCase() && name !== name.toLowerCase()) map[k].name = name;
+  }
+  var allItems = [];
+  meetingDatas.forEach(function (d) {
+    var n = d && d.notes && typeof d.notes === "object" ? d.notes : {};
+    strList(n.attendees).forEach(add);
+    notesItems(d).forEach(function (a) { allItems.push(a); splitOwners(a.owner).forEach(add); });
+  });
+  (loose || []).filter(Boolean).forEach(function (a) { allItems.push(a); splitOwners(a.owner).forEach(add); });
+  var list = Object.keys(map).map(function (k) { return map[k]; });
+  list.forEach(function (p) {
+    p.meetings = meetingDatas.filter(function (d) { return personInMeeting(d, p.key, myName); }).length;
+    p.open = allItems.filter(function (a) { return !a.done && personOwns(a.owner, p.key, myName); }).length;
+  });
+  list.sort(function (a, b) { return a.name.localeCompare(b.name, undefined, { sensitivity: "base" }); });
+  return list;
+}
+
+/** Counts of open, overdue and due-today items (yours when myName is set, else everyone's). */
+function itemStats(items, myName, today) {
+  var s = { open: 0, overdue: 0, today: 0 };
+  items.forEach(function (a) {
+    if (!a || a.done) return;
+    if (lc(myName) && !isMine(a.owner, myName)) return;
+    s.open++;
+    var g = dueGroup(a, today);
+    if (g === "overdue") s.overdue++;
+    else if (g === "today") s.today++;
+  });
+  return s;
+}
+
+// ---------- key dates ----------
+var LOOSE_DATE_RE = /\b([A-Z][a-z]{2}) (\d{1,2}), (\d{4})\b/;
+/** Parses the embedded "EEE, MMM d, yyyy" (or "MMM d, yyyy") date in a key date line. */
+function parseKeyDate(text) {
+  if (!text) return null;
+  var s = String(text);
+  var m = s.match(DUE_RE) || s.match(LOOSE_DATE_RE);
+  if (!m || !Object.prototype.hasOwnProperty.call(MONTHS, m[1])) return null;
+  var d = new Date(Number(m[3]), MONTHS[m[1]], Number(m[2]));
+  return isNaN(d.getTime()) || d.getDate() !== Number(m[2]) ? null : d;
+}
+
+/** Splits entries ({text, date, meetingTime}) into upcoming (soonest first), past (latest first) and undated. */
+function sortKeyDates(entries, today) {
+  var up = [], past = [], none = [];
+  entries.forEach(function (e) {
+    if (!e.date) none.push(e);
+    else if (dayDiff(e.date, today) >= 0) up.push(e);
+    else past.push(e);
+  });
+  function byMeeting(a, b) { return (b.meetingTime || 0) - (a.meetingTime || 0); }
+  up.sort(function (a, b) { return (a.date - b.date) || byMeeting(a, b); });
+  past.sort(function (a, b) { return (b.date - a.date) || byMeeting(a, b); });
+  none.sort(byMeeting);
+  return { upcoming: up, past: past, undated: none };
+}
+
+// ---------- tags ----------
+/** Each returns a new tag list, or null when nothing changes. */
+function dedupeTags(tags) {
+  var seen = {};
+  return tags.filter(function (t) { var k = lc(t); if (!k || seen[k]) return false; seen[k] = true; return true; });
+}
+function renameTagInList(tags, from, to) {
+  tags = Array.isArray(tags) ? tags : [];
+  if (tags.indexOf(from) < 0) return null;
+  var out = dedupeTags(tags.map(function (t) { return t === from ? to : t; }));
+  return JSON.stringify(out) === JSON.stringify(tags) ? null : out;
+}
+function removeTagFromList(tags, tag) {
+  tags = Array.isArray(tags) ? tags : [];
+  if (tags.indexOf(tag) < 0) return null;
+  return tags.filter(function (t) { return t !== tag; });
+}
+function addTagToList(tags, tag) {
+  tags = Array.isArray(tags) ? tags : [];
+  if (!lc(tag) || tags.some(function (t) { return lc(t) === lc(tag); })) return null;
+  return tags.concat([tag]);
+}
+
+// ---------- notes export ----------
+function htmlEscape(s) {
+  return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+function xmlEscape(s) {
+  return String(s == null ? "" : s).replace(/[\x00-\x08\x0B\x0C\x0E-\x1F￾￿]/g, "")
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+function itemLine(a) {
+  var t = (a.done ? "☑ " : "☐ ") + (String(a.task || "").trim() || "(no task)");
+  var owner = String(a.owner || "").trim(), due = String(a.due || "").trim();
+  if (owner || due) t += " — " + [owner, due ? "due " + due : ""].filter(Boolean).join(", ");
+  return t;
+}
+
+/**
+ * Formatted notes as {title, dateLine, sections:[{title, blocks:[{t:"p"|"h3"|"li", text, level}]}]}.
+ * Empty sections are left out.
+ */
+function notesModel(m, dateLine) {
+  m = m || {};
+  var n = m.notes && typeof m.notes === "object" ? m.notes : null;
+  var sections = [];
+  function lis(arr) { return strList(arr).map(function (s) { return { t: "li", text: s, level: 0 }; }); }
+  function add(title, blocks) { if (blocks.length) sections.push({ title: title, blocks: blocks }); }
+  if (n) {
+    add("Summary", String(n.summary || "").split("\n").map(function (s) { return s.trim(); }).filter(Boolean).map(function (s) { return { t: "p", text: s }; }));
+    add("Attendees", lis(n.attendees));
+    var topics = Array.isArray(n.topics) ? n.topics.filter(Boolean) : [];
+    var disc = [];
+    if (topics.length) {
+      topics.forEach(function (tp) {
+        var pts = Array.isArray(tp.points) ? tp.points : [];
+        var subs = Array.isArray(tp.subs) ? tp.subs : [];
+        var body = [];
+        pts.forEach(function (p, i) {
+          var txt = String(p == null ? "" : p).trim();
+          if (txt) body.push({ t: "li", text: txt, level: 0 });
+          strList(subs[i]).forEach(function (s) { body.push({ t: "li", text: s, level: txt ? 1 : 0 }); });
+        });
+        var title = String(tp.title || "").trim();
+        if (title) disc.push({ t: "h3", text: title });
+        disc = disc.concat(body);
+      });
+    } else disc = lis(n.discussion);
+    add("Discussion", disc);
+    add("Decisions", lis(n.decisions));
+    add("Action items", notesItems(m).map(function (a) { return { t: "li", text: itemLine(a), level: 0 }; }));
+    add("Open questions", lis(n.openQuestions));
+    add("Next steps", lis(n.nextSteps));
+    add("Key dates", lis(n.keyDates));
+    add("Risks and blockers", lis(n.risks));
+  }
+  return { title: String(m.title || "").trim() || "Untitled meeting", dateLine: dateLine || "", sections: sections };
+}
+
+/** Plain text notes; `only` limits to the named sections. */
+function modelToText(model, only) {
+  var out = [model.title];
+  if (model.dateLine) out.push(model.dateLine);
+  model.sections.forEach(function (s) {
+    if (only && only.indexOf(s.title) < 0) return;
+    out.push("", s.title.toUpperCase());
+    s.blocks.forEach(function (b) {
+      if (b.t === "p") out.push(b.text);
+      else if (b.t === "h3") out.push(b.text + ":");
+      else if (s.title === "Action items") out.push(b.text);
+      else out.push((b.level ? "    - " : "• ") + b.text);
+    });
+  });
+  return out.join("\n") + "\n";
+}
+
+var MAIL_FONT = "font-family:Calibri,Arial,Helvetica,sans-serif;";
+/** HTML notes with inline styles that paste cleanly into Outlook and Gmail. */
+function modelToHtml(model) {
+  var h = [];
+  h.push('<div style="' + MAIL_FONT + 'font-size:11pt;color:#222222;line-height:1.4">');
+  h.push('<h1 style="' + MAIL_FONT + 'font-size:18pt;font-weight:bold;margin:0 0 2px 0;color:#111111">' + htmlEscape(model.title) + "</h1>");
+  if (model.dateLine) h.push('<p style="' + MAIL_FONT + 'font-size:10pt;color:#666666;margin:0 0 10px 0">' + htmlEscape(model.dateLine) + "</p>");
+  model.sections.forEach(function (s) {
+    h.push('<h2 style="' + MAIL_FONT + 'font-size:13pt;font-weight:bold;margin:14px 0 4px 0;color:#c2491b">' + htmlEscape(s.title) + "</h2>");
+    var depth = -1;
+    function closeTo(d) { while (depth > d) { h.push("</ul>"); depth--; } }
+    s.blocks.forEach(function (b) {
+      if (b.t === "li") {
+        var lvl = b.level ? 1 : 0;
+        while (depth < lvl) { h.push('<ul style="margin:2px 0 2px 0;padding-left:22px">'); depth++; }
+        closeTo(lvl);
+        var plain = s.title === "Action items";
+        h.push('<li style="' + MAIL_FONT + 'font-size:11pt;margin:1px 0' + (plain ? ";list-style-type:none;margin-left:-16px" : "") + '">' + htmlEscape(b.text) + "</li>");
+      } else {
+        closeTo(-1);
+        if (b.t === "h3") h.push('<p style="' + MAIL_FONT + 'font-size:11pt;font-weight:bold;margin:8px 0 2px 0">' + htmlEscape(b.text) + "</p>");
+        else h.push('<p style="' + MAIL_FONT + 'font-size:11pt;margin:0 0 6px 0">' + htmlEscape(b.text) + "</p>");
+      }
+    });
+    closeTo(-1);
+  });
+  h.push("</div>");
+  return h.join("");
+}
+
+// ---------- mailto ----------
+var MAIL_NOTE = "Full notes copied to your clipboard — paste below.";
+function mailtoUrl(to, subject, body) {
+  var addr = String(to || "").trim().replace(/[^A-Za-z0-9._+@-]/g, function (c) { return encodeURIComponent(c); });
+  return "mailto:" + addr + "?subject=" + encodeURIComponent(String(subject || "").replace(/\s+/g, " ").trim()) +
+    "&body=" + encodeURIComponent(String(body || "").replace(/\r?\n/g, "\r\n"));
+}
+/**
+ * Picks the full body when the URL fits in `limit` characters; otherwise the short body plus the clipboard note,
+ * trimming the short body further if needed. Returns {url, short}.
+ */
+function planMailto(to, subject, fullBody, shortBody, limit) {
+  limit = limit || 1800;
+  var url = mailtoUrl(to, subject, fullBody);
+  if (url.length <= limit) return { url: url, short: false };
+  var main = String(shortBody || "").replace(/\s+$/, "");
+  function make(k) { return mailtoUrl(to, subject, (k < main.length ? main.slice(0, k).replace(/\s+$/, "") + "…" : main) + "\n\n" + MAIL_NOTE + "\n"); }
+  url = make(main.length);
+  if (url.length > limit) {
+    var lo = 0, hi = main.length;
+    while (lo < hi) { var mid = Math.ceil((lo + hi) / 2); if (make(mid).length <= limit) lo = mid; else hi = mid - 1; }
+    url = make(lo);
+  }
+  return { url: url, short: true };
+}
+
+// ---------- ZIP (store) and .docx ----------
+var CRC_TABLE = null;
+function crc32(bytes) {
+  if (!CRC_TABLE) {
+    CRC_TABLE = new Uint32Array(256);
+    for (var n = 0; n < 256; n++) {
+      var c = n;
+      for (var k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1;
+      CRC_TABLE[n] = c >>> 0;
+    }
+  }
+  var crc = 0xFFFFFFFF;
+  for (var i = 0; i < bytes.length; i++) crc = CRC_TABLE[(crc ^ bytes[i]) & 0xFF] ^ (crc >>> 8);
+  return (crc ^ 0xFFFFFFFF) >>> 0;
+}
+
+/** Builds an uncompressed ZIP from [{name, data: string | Uint8Array}]. */
+function zipStore(files, date) {
+  var enc = new TextEncoder();
+  date = date || new Date();
+  var year = Math.max(1980, date.getFullYear());
+  var dosTime = (date.getHours() << 11) | (date.getMinutes() << 5) | Math.floor(date.getSeconds() / 2);
+  var dosDate = ((year - 1980) << 9) | ((date.getMonth() + 1) << 5) | date.getDate();
+  var chunks = [], central = [], offset = 0;
+  files.forEach(function (f) {
+    var name = enc.encode(f.name);
+    var data = typeof f.data === "string" ? enc.encode(f.data) : f.data;
+    var crc = crc32(data);
+    var lh = new Uint8Array(30 + name.length), v = new DataView(lh.buffer);
+    v.setUint32(0, 0x04034b50, true); v.setUint16(4, 20, true); v.setUint16(6, 0x0800, true); v.setUint16(8, 0, true);
+    v.setUint16(10, dosTime, true); v.setUint16(12, dosDate, true); v.setUint32(14, crc, true);
+    v.setUint32(18, data.length, true); v.setUint32(22, data.length, true); v.setUint16(26, name.length, true); v.setUint16(28, 0, true);
+    lh.set(name, 30);
+    var ch = new Uint8Array(46 + name.length), c = new DataView(ch.buffer);
+    c.setUint32(0, 0x02014b50, true); c.setUint16(4, 20, true); c.setUint16(6, 20, true); c.setUint16(8, 0x0800, true); c.setUint16(10, 0, true);
+    c.setUint16(12, dosTime, true); c.setUint16(14, dosDate, true); c.setUint32(16, crc, true);
+    c.setUint32(20, data.length, true); c.setUint32(24, data.length, true); c.setUint16(28, name.length, true);
+    c.setUint16(30, 0, true); c.setUint16(32, 0, true); c.setUint16(34, 0, true); c.setUint16(36, 0, true); c.setUint32(38, 0, true);
+    c.setUint32(42, offset, true);
+    ch.set(name, 46);
+    chunks.push(lh, data);
+    central.push(ch);
+    offset += lh.length + data.length;
+  });
+  var cdSize = central.reduce(function (s, x) { return s + x.length; }, 0);
+  var end = new Uint8Array(22), e = new DataView(end.buffer);
+  e.setUint32(0, 0x06054b50, true); e.setUint16(4, 0, true); e.setUint16(6, 0, true);
+  e.setUint16(8, files.length, true); e.setUint16(10, files.length, true);
+  e.setUint32(12, cdSize, true); e.setUint32(16, offset, true); e.setUint16(20, 0, true);
+  var all = chunks.concat(central, [end]);
+  var out = new Uint8Array(offset + cdSize + 22), pos = 0;
+  all.forEach(function (x) { out.set(x, pos); pos += x.length; });
+  return out;
+}
+
+var W_NS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+var XML_HEAD = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
+function docxPara(text, opts) {
+  opts = opts || {};
+  var ppr = "";
+  if (opts.style) ppr += '<w:pStyle w:val="' + opts.style + '"/>';
+  if (opts.indent) ppr += '<w:ind w:left="' + opts.indent + '" w:hanging="240"/>';
+  var rpr = opts.color ? '<w:rPr><w:color w:val="' + opts.color + '"/></w:rPr>' : "";
+  return "<w:p>" + (ppr ? "<w:pPr>" + ppr + "</w:pPr>" : "") + "<w:r>" + rpr + '<w:t xml:space="preserve">' + xmlEscape(text) + "</w:t></w:r></w:p>";
+}
+function docxDocumentXml(model) {
+  var body = [docxPara(model.title, { style: "Title" })];
+  if (model.dateLine) body.push(docxPara(model.dateLine, { color: "666666" }));
+  model.sections.forEach(function (s) {
+    body.push(docxPara(s.title, { style: "Heading1" }));
+    s.blocks.forEach(function (b) {
+      if (b.t === "h3") body.push(docxPara(b.text, { style: "Heading2" }));
+      else if (b.t === "p") body.push(docxPara(b.text));
+      else if (s.title === "Action items") body.push(docxPara(b.text, { indent: 240 }));
+      else body.push(docxPara((b.level ? "◦ " : "• ") + b.text, { indent: b.level ? 720 : 360 }));
+    });
+  });
+  return XML_HEAD + "<w:document " + W_NS + "><w:body>" + body.join("") +
+    '<w:sectPr><w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="720" w:footer="720" w:gutter="0"/></w:sectPr>' +
+    "</w:body></w:document>";
+}
+var DOCX_STYLES = XML_HEAD + "<w:styles " + W_NS + ">" +
+  '<w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:eastAsia="Calibri" w:cs="Calibri"/><w:sz w:val="22"/><w:szCs w:val="22"/></w:rPr></w:rPrDefault>' +
+  '<w:pPrDefault><w:pPr><w:spacing w:after="80" w:line="264" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults>' +
+  '<w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/></w:style>' +
+  '<w:style w:type="paragraph" w:styleId="Title"><w:name w:val="Title"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/>' +
+  '<w:pPr><w:spacing w:after="40"/></w:pPr><w:rPr><w:b/><w:sz w:val="40"/><w:szCs w:val="40"/></w:rPr></w:style>' +
+  '<w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/>' +
+  '<w:pPr><w:keepNext/><w:spacing w:before="280" w:after="80"/><w:outlineLvl w:val="0"/></w:pPr><w:rPr><w:b/><w:color w:val="C2491B"/><w:sz w:val="28"/><w:szCs w:val="28"/></w:rPr></w:style>' +
+  '<w:style w:type="paragraph" w:styleId="Heading2"><w:name w:val="heading 2"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/>' +
+  '<w:pPr><w:keepNext/><w:spacing w:before="160" w:after="40"/><w:outlineLvl w:val="1"/></w:pPr><w:rPr><w:b/><w:sz w:val="24"/><w:szCs w:val="24"/></w:rPr></w:style>' +
+  "</w:styles>";
+
+/** A minimal .docx (as bytes) for the notes model. */
+function buildDocx(model, date) {
+  return zipStore([
+    { name: "[Content_Types].xml", data: XML_HEAD + '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
+      '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
+      '<Default Extension="xml" ContentType="application/xml"/>' +
+      '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>' +
+      '<Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>' +
+      "</Types>" },
+    { name: "_rels/.rels", data: XML_HEAD + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+      '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>' +
+      "</Relationships>" },
+    { name: "word/_rels/document.xml.rels", data: XML_HEAD + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+      '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>' +
+      "</Relationships>" },
+    { name: "word/document.xml", data: docxDocumentXml(model) },
+    { name: "word/styles.xml", data: DOCX_STYLES }
+  ], date);
+}
+
+/** Meeting title made safe for a file name. */
+function safeFileName(title, ext) {
+  var base = String(title || "").replace(/[\\/:*?"<>|\x00-\x1F\x7F]+/g, " ").replace(/\s+/g, " ").replace(/^[.\s]+|[.\s]+$/g, "").slice(0, 100).trim();
+  return (base || "Meeting notes") + ext;
+}
+
 if (typeof module !== "undefined" && module.exports) {
   module.exports = { parseDue: parseDue, dayDiff: dayDiff, dueGroup: dueGroup, splitOwners: splitOwners, formatDue: formatDue,
     formatDuration: formatDuration, utf8ToB64: utf8ToB64, b64ToUtf8: b64ToUtf8, linesToList: linesToList, listToLines: listToLines,
-    groupItems: groupItems, alignSubs: alignSubs };
+    groupItems: groupItems, alignSubs: alignSubs, canonPerson: canonPerson, isMine: isMine, personOwns: personOwns,
+    personInMeeting: personInMeeting, buildPeople: buildPeople, itemStats: itemStats, parseKeyDate: parseKeyDate, sortKeyDates: sortKeyDates,
+    renameTagInList: renameTagInList, removeTagFromList: removeTagFromList, addTagToList: addTagToList, htmlEscape: htmlEscape,
+    xmlEscape: xmlEscape, notesModel: notesModel, modelToText: modelToText, modelToHtml: modelToHtml, mailtoUrl: mailtoUrl,
+    planMailto: planMailto, MAIL_NOTE: MAIL_NOTE, crc32: crc32, zipStore: zipStore, buildDocx: buildDocx, docxDocumentXml: docxDocumentXml,
+    safeFileName: safeFileName };
 }
 </script>
 
@@ -406,6 +875,9 @@ if (typeof module !== "undefined" && module.exports) {
   var LOOSE = "action-items.json";
   var DEFAULT_REPO = "ajhockey88/perronote-data";
   var KEY_REPO = "perronote.repo", KEY_TOKEN = "perronote.token", KEY_SHOWDONE = "perronote.showDone";
+  var KEY_NAME = "perronote.myName", KEY_RCPT = "perronote.recipients", KEY_LASTRCPT = "perronote.lastRecipient", KEY_OWNER = "perronote.ownerFilter";
+  var ME = "__me__"; // owner filter value for "Assigned to me"
+  var DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
   var EMPTY_MSG = "Nothing synced yet. Turn on Web sync in the app’s Settings and add the token there.";
 
   // ---------- storage ----------
@@ -415,6 +887,19 @@ if (typeof module !== "undefined" && module.exports) {
 
   var cfg = { repo: lsGet(KEY_REPO) || "", token: lsGet(KEY_TOKEN) || "" };
   function configured() { return !!(cfg.repo && cfg.token); }
+  function myName() { return (lsGet(KEY_NAME) || "").trim(); }
+  function defaultOwner() {
+    var v = lsGet(KEY_OWNER);
+    if (v === null) return myName() ? ME : "";
+    return v;
+  }
+  function recipients() {
+    try {
+      var arr = JSON.parse(lsGet(KEY_RCPT) || "[]");
+      return Array.isArray(arr) ? arr.filter(function (r) { return r && typeof r.email === "string" && r.email; }) : [];
+    } catch (e) { return []; }
+  }
+  function saveRecipients(arr) { lsSet(KEY_RCPT, JSON.stringify(arr)); }
 
   // ---------- state ----------
   var state = {
@@ -430,7 +915,12 @@ if (typeof module !== "undefined" && module.exports) {
     skipped: 0,
     search: "",
     tag: null,
-    owner: "",
+    owner: defaultOwner(),
+    peopleSearch: "",
+    selecting: false,
+    selected: new Set(),  // meeting paths
+    bulk: null,           // { done, total } while a bulk edit runs
+    bulkMsg: null,        // { ok, text, lines } after one finishes
     showDone: lsGet(KEY_SHOWDONE) === "1",
     adding: false
   };
@@ -682,10 +1172,15 @@ if (typeof module !== "undefined" && module.exports) {
     var parts = h.split("/");
     if (parts[0] === "meeting" && parts[1]) return { name: "meeting", id: decodeURIComponent(parts[1]) };
     if (parts[0] === "actions") return { name: "actions" };
+    if (parts[0] === "people") return { name: "people" };
+    if (parts[0] === "person" && parts[1]) return { name: "person", key: decodeURIComponent(h.slice(7)) };
+    if (parts[0] === "dates") return { name: "dates" };
+    if (parts[0] === "tags") return { name: "tags" };
     if (parts[0] === "settings") return { name: "settings" };
     return { name: "meetings" };
   }
   var currentHash = location.hash;
+  var suppressUnload = false;
   var ignoreHash = false;
   window.addEventListener("hashchange", function () {
     if (ignoreHash) { ignoreHash = false; return; }
@@ -701,7 +1196,7 @@ if (typeof module !== "undefined" && module.exports) {
     render();
   });
   window.addEventListener("beforeunload", function (e) {
-    if (isDirty()) { e.preventDefault(); e.returnValue = ""; }
+    if (isDirty() && !suppressUnload) { e.preventDefault(); e.returnValue = ""; }
   });
   document.addEventListener("keydown", function (e) {
     if ((e.metaKey || e.ctrlKey) && !e.altKey && (e.key === "s" || e.key === "S")) {
@@ -724,8 +1219,15 @@ if (typeof module !== "undefined" && module.exports) {
     requestAnimationFrame(growAll);
   }
   function updateTabs(r) {
+    var tab = { meetings: "meetings", meeting: "meetings", tags: "meetings", actions: "actions", people: "people", person: "people", dates: "dates" }[r.name] || "";
     document.querySelectorAll(".tab").forEach(function (t) {
-      t.classList.toggle("active", (t.dataset.tab === "actions") === (r.name === "actions") && r.name !== "settings");
+      var on = t.dataset.tab === tab;
+      t.classList.toggle("active", on);
+      var nav = t.parentNode;
+      if (on && nav.scrollWidth > nav.clientWidth) {
+        var tr = t.getBoundingClientRect(), nr = nav.getBoundingClientRect();
+        nav.scrollLeft += (tr.left - nr.left) - (nr.width - tr.width) / 2;
+      }
     });
   }
   function render() {
@@ -743,6 +1245,10 @@ if (typeof module !== "undefined" && module.exports) {
     }
     if (r.name === "meeting") return renderMeeting(r.id);
     if (r.name === "actions") return renderActions();
+    if (r.name === "people") return renderPeople();
+    if (r.name === "person") return renderPerson(r.key);
+    if (r.name === "dates") return renderDates();
+    if (r.name === "tags") return renderTags();
     return renderMeetings();
   }
 
@@ -799,13 +1305,73 @@ if (typeof module !== "undefined" && module.exports) {
         el("li", null, tokenLink, " with access to only your data repo."),
         el("li", { text: "Under Repository permissions, set Contents to Read and write." }),
         el("li", { text: "Paste the token below." })),
-      form));
+      form,
+      configured() ? personalPanels() : null));
     if (!configured()) setTimeout(function () { (repoIn.value ? tokIn : repoIn).focus(); }, 0);
   }
+  function personalPanels() {
+    var nameIn = el("input", { type: "text", value: myName(), placeholder: "e.g. Alex Morgan", autocomplete: "name", "aria-label": "Your name" });
+    var nameForm = el("form", { class: "card panel" },
+      el("h2", { text: "You" }),
+      el("label", { class: "field" }, el("span", { text: "Your name" }), nameIn,
+        el("div", { class: "hint", text: "Used for “Assigned to me” and to show “Me” as you. Stays in this browser." })),
+      el("button", { class: "btn primary", type: "submit", text: "Save name" }));
+    nameForm.addEventListener("submit", function (ev) {
+      ev.preventDefault();
+      var v = nameIn.value.trim().replace(/\s+/g, " ");
+      if (v) lsSet(KEY_NAME, v); else lsDel(KEY_NAME);
+      var stored = lsGet(KEY_OWNER);
+      if (stored === null || (!v && stored === ME)) state.owner = v ? ME : "";
+      toast(v ? "Saved" : "Name cleared");
+    });
+
+    var list = el("div", { class: "card rows recip-list" });
+    function drawList() {
+      var rs = recipients();
+      list.replaceChildren();
+      list.classList.toggle("hidden", !rs.length);
+      rs.forEach(function (r, i) {
+        list.append(el("div", { class: "lrow" },
+          el("div", { class: "body" }, el("div", { class: "name", text: r.name || r.email }), r.name ? el("div", { class: "meta", text: r.email }) : null),
+          el("div", { class: "acts" }, el("button", { class: "btn ghost", type: "button", text: "Remove", "aria-label": "Remove " + (r.name || r.email),
+            onclick: function () {
+              var arr = recipients(); arr.splice(i, 1); saveRecipients(arr);
+              if (lsGet(KEY_LASTRCPT) === r.email && !arr.some(function (x) { return x.email === r.email; })) lsDel(KEY_LASTRCPT);
+              drawList();
+            } }))));
+      });
+    }
+    drawList();
+    var rName = el("input", { type: "text", placeholder: "Name", "aria-label": "Recipient name", autocomplete: "off" });
+    var rEmail = el("input", { type: "text", inputmode: "email", placeholder: "name@example.com", "aria-label": "Recipient email", autocomplete: "off", autocapitalize: "off", spellcheck: "false" });
+    var rErr = el("p", { class: "small", style: "color:var(--red);margin:8px 0 0", text: "" });
+    var rForm = el("form", { class: "recip-form" }, rName, rEmail, el("button", { class: "btn", type: "submit", text: "Add" }));
+    rForm.addEventListener("submit", function (ev) {
+      ev.preventDefault();
+      var email = rEmail.value.trim();
+      if (!/^[^\s@,;<>]+@[^\s@,;<>]+\.[^\s@,;<>]+$/.test(email)) { rErr.textContent = "Enter a valid email address."; rEmail.focus(); return; }
+      var arr = recipients().filter(function (x) { return x.email.toLowerCase() !== email.toLowerCase(); });
+      arr.push({ name: rName.value.trim().replace(/\s+/g, " "), email: email });
+      arr.sort(function (a, b) { return (a.name || a.email).localeCompare(b.name || b.email); });
+      saveRecipients(arr);
+      rName.value = ""; rEmail.value = ""; rErr.textContent = "";
+      drawList();
+    });
+    var rPanel = el("div", { class: "card panel" },
+      el("h2", { text: "Email recipients" }),
+      el("p", { class: "small muted", style: "margin:0 0 12px", text: "People you can pick under Share › Send to on a meeting. Stored in this browser only." }),
+      list, rForm, rErr);
+    var tagsPanel = el("div", { class: "card panel" },
+      el("h2", { text: "Tags" }),
+      el("a", { class: "btn", href: "#/tags", text: "Manage tags" }));
+    return [nameForm, rPanel, tagsPanel];
+  }
+
   function resetData() {
     state.branch = null; state.files = new Map(); state.cache = new Map();
     state.loaded = false; state.empty = false; state.error = null; state.lastLoad = 0;
-    state.tag = null; state.owner = ""; state.search = "";
+    state.tag = null; state.owner = defaultOwner(); state.search = "";
+    state.selecting = false; state.selected = new Set(); state.bulkMsg = null;
   }
 
   // ----- Meetings list -----
@@ -815,17 +1381,120 @@ if (typeof module !== "undefined" && module.exports) {
     itemsOf(m).forEach(function (a) { parts.push(a.task, a.owner); });
     return parts.filter(Boolean).join(" \n ").toLowerCase();
   }
+  function meetingIdOf(m) { return m.data.id || m.path.slice(9, -5); }
+  function meetingCardBody(d) {
+    var open = itemsOf(d).filter(function (a) { return !a.done; }).length;
+    return [
+      el("div", { class: "title", text: d.title || "Untitled meeting" }),
+      el("div", { class: "meta" },
+        el("span", { text: fmtDate(d.date) }),
+        formatDuration(d.duration) ? el("span", { text: formatDuration(d.duration) }) : null,
+        open ? el("span", { class: "open-count", text: open + " open action item" + (open === 1 ? "" : "s") }) : null,
+        notesOf(d) ? null : el("span", { text: "No notes yet" })),
+      Array.isArray(d.tags) && d.tags.length ? el("div", { class: "tags-row" }, d.tags.map(function (t) { return el("span", { class: "tag", text: t }); })) : null
+    ];
+  }
+  function meetingCard(m) {
+    return el("a", { class: "card meeting-card", href: "#/meeting/" + encodeURIComponent(meetingIdOf(m)) }, meetingCardBody(m.data));
+  }
+
+  /** "N open · M overdue · K due today" for your items (everyone's without a name); tapping opens Action items for you. */
+  function summaryStrip() {
+    var items = allRows().map(function (r) { return r.item; });
+    if (!items.length) return null;
+    var name = myName();
+    var st = itemStats(items, name, new Date());
+    return el("button", { class: "strip", type: "button", "aria-label": "Show " + (name ? "your" : "all") + " action items",
+      onclick: function () {
+        state.owner = name ? ME : "";
+        state.adding = false;
+        if (location.hash === "#/actions") render(); else location.hash = "#/actions";
+      } },
+      el("span", { class: "lbl", text: name ? "Your items" : "All items" }),
+      el("span", { text: st.open + " open" }),
+      el("span", { class: "muted", text: "·" }),
+      el("span", { class: st.overdue ? "od" : "", text: st.overdue + " overdue" }),
+      el("span", { class: "muted", text: "·" }),
+      el("span", { class: st.today ? "td" : "", text: st.today + " due today" }),
+      el("span", { class: "go", "aria-hidden": "true", text: "›" }));
+  }
+
+  function tagCountsOf(list) {
+    var counts = {};
+    list.forEach(function (m) { (Array.isArray(m.data.tags) ? m.data.tags : []).forEach(function (t) { counts[t] = (counts[t] || 0) + 1; }); });
+    return counts;
+  }
+
+  /**
+   * Writes each meeting in `paths` in turn, after `mutate(obj)` changes it (returns false to skip).
+   * Stops on the first error. Leaves a summary in state.bulkMsg and re-renders.
+   */
+  async function runBulk(paths, mutate, doneText) {
+    if (state.bulk) return;
+    var work = paths.filter(function (p) { return state.files.has(p); });
+    state.bulk = { done: 0, total: work.length };
+    state.bulkMsg = null;
+    render();
+    var updated = [], failed = null, missingSha = false;
+    for (var i = 0; i < work.length; i++) {
+      var f = state.files.get(work[i]);
+      if (!f) continue;
+      var obj = clone(f.data);
+      var title = obj.title || "Untitled meeting";
+      if (mutate(obj)) {
+        obj.updated = new Date().toISOString();
+        try {
+          var sha = await putFile(work[i], obj, f.sha, title);
+          if (!sha) missingSha = true;
+          updated.push(title);
+        } catch (e) {
+          failed = { title: title, msg: e.status === 409 ? "it changed on the phone. It’s been reloaded — try again." : (e.message || "Couldn’t save.") };
+        }
+      }
+      state.bulk.done = i + 1;
+      var pr = document.getElementById("bulkProgress");
+      if (pr) pr.textContent = "Updating meetings… " + state.bulk.done + " / " + state.bulk.total;
+      if (failed) break;
+    }
+    state.bulk = null;
+    if (failed) {
+      state.bulkMsg = { ok: false, text: "Stopped. Updated " + updated.length + " meeting" + (updated.length === 1 ? "" : "s") + " before “" + failed.title + "” failed: " + failed.msg, lines: updated };
+    } else {
+      state.bulkMsg = { ok: true, text: updated.length ? doneText(updated.length) : "Nothing needed changing.", lines: [] };
+    }
+    if (failed || missingSha) await load(); else render();
+  }
+  function bulkNodes() {
+    if (state.bulk) {
+      return el("div", { class: "card bulk-msg loading", style: "padding:12px 14px;justify-content:flex-start" },
+        el("div", { class: "spinner" }), el("span", { id: "bulkProgress", text: "Updating meetings… " + state.bulk.done + " / " + state.bulk.total }));
+    }
+    if (!state.bulkMsg) return null;
+    var bm = state.bulkMsg;
+    return el("div", { class: "card bulk-msg" + (bm.ok ? "" : " error-box"), role: "status" },
+      el("div", { class: "btn-row" }, bm.ok ? el("span", { text: bm.text }) : el("strong", { text: bm.text }),
+        el("button", { class: "btn ghost right", type: "button", text: "Dismiss", onclick: function () { state.bulkMsg = null; render(); } })),
+      bm.lines.length ? [el("div", { class: "small muted", style: "margin-top:6px", text: "Already updated:" }),
+        el("ul", { class: "small" }, bm.lines.map(function (t) { return el("li", { text: t }); }))] : null);
+  }
+  function plural(n, word) { return n + " " + word + (n === 1 ? "" : "s"); }
+
   function renderMeetings() {
     var all = meetings();
-    var tagCounts = {};
-    all.forEach(function (m) { (Array.isArray(m.data.tags) ? m.data.tags : []).forEach(function (t) { tagCounts[t] = (tagCounts[t] || 0) + 1; }); });
+    var tagCounts = tagCountsOf(all);
     var tags = Object.keys(tagCounts).sort(function (a, b) { return a.localeCompare(b); });
     if (state.tag && !tagCounts[state.tag]) state.tag = null;
+    var known = new Set(all.map(function (m) { return m.path; }));
+    state.selected.forEach(function (p) { if (!known.has(p)) state.selected.delete(p); });
 
     var listEl = el("div", { class: "list" });
     var search = el("input", { type: "search", placeholder: "Search meetings, people, action items…", value: state.search, "aria-label": "Search" });
     search.addEventListener("input", function () { state.search = search.value; fill(); });
+    var selectBtn = el("button", { class: "btn", type: "button", text: state.selecting ? "Done" : "Select", disabled: !all.length,
+      onclick: function () { state.selecting = !state.selecting; if (!state.selecting) state.selected = new Set(); renderMeetings(); } });
     var chips = el("div", { class: "chips" });
+    var selBar = el("div", { class: "card select-bar" + (state.selecting ? "" : " hidden") });
+    var shown = [];
     function drawChips() {
       chips.replaceChildren();
       if (!tags.length) { chips.classList.add("hidden"); return; }
@@ -834,30 +1503,77 @@ if (typeof module !== "undefined" && module.exports) {
         chips.append(el("button", { type: "button", class: "chip" + (state.tag === t ? " active" : ""), text: t,
           onclick: function () { state.tag = state.tag === t ? null : t; drawChips(); fill(); } }));
       });
+      chips.append(el("a", { class: "chip manage", href: "#/tags", text: "Manage tags" }));
+    }
+    function drawSelBar() {
+      if (!state.selecting) return;
+      selBar.replaceChildren();
+      var n = state.selected.size;
+      var busy = !!state.bulk;
+      var selectedPaths = Array.from(state.selected);
+      var selTags = tagCountsOf(all.filter(function (m) { return state.selected.has(m.path); }));
+      var selTagList = Object.keys(selTags).sort(function (a, b) { return a.localeCompare(b); });
+      var allShownSelected = shown.length && shown.every(function (m) { return state.selected.has(m.path); });
+      selBar.append(el("div", { class: "line" },
+        el("strong", { text: n ? n + " selected" : "Select meetings" }),
+        el("button", { class: "btn ghost", type: "button", text: allShownSelected ? "Clear" : "Select all shown", disabled: !shown.length,
+          onclick: function () {
+            if (allShownSelected) state.selected = new Set(); else shown.forEach(function (m) { state.selected.add(m.path); });
+            fill();
+          } })));
+      var listId = "tagSuggestions";
+      var tagIn = el("input", { type: "text", placeholder: "Tag to add", list: listId, "aria-label": "Tag to add", autocomplete: "off" });
+      var dl = el("datalist", { id: listId }, tags.map(function (t) { return el("option", { value: t }); }));
+      var addForm = el("form", { class: "line" }, tagIn, dl, el("button", { class: "btn primary", type: "submit", text: "Add tag", disabled: !n || busy }));
+      addForm.addEventListener("submit", function (ev) {
+        ev.preventDefault();
+        var t = tagIn.value.trim().replace(/\s+/g, " ").replace(/,/g, " ").trim();
+        if (!t) { tagIn.focus(); return; }
+        var existing = tags.find(function (x) { return x.toLowerCase() === t.toLowerCase(); });
+        if (existing) t = existing;
+        runBulk(selectedPaths, function (obj) {
+          var next = addTagToList(obj.tags, t);
+          if (!next) return false;
+          obj.tags = next; return true;
+        }, function (k) { return "Added “" + t + "” to " + plural(k, "meeting") + "."; });
+      });
+      selBar.append(addForm);
+      if (selTagList.length) {
+        var rmSel = el("select", { "aria-label": "Tag to remove" }, selTagList.map(function (t) { return el("option", { value: t, text: t + " (" + selTags[t] + ")" }); }));
+        selBar.append(el("div", { class: "line" }, rmSel, el("button", { class: "btn danger", type: "button", text: "Remove tag", disabled: busy,
+          onclick: function () {
+            var t = rmSel.value;
+            runBulk(selectedPaths, function (obj) {
+              var next = removeTagFromList(obj.tags, t);
+              if (!next) return false;
+              obj.tags = next; return true;
+            }, function (k) { return "Removed “" + t + "” from " + plural(k, "meeting") + "."; });
+          } })));
+      }
     }
     function fill() {
       listEl.replaceChildren();
       var q = state.search.trim().toLowerCase();
-      var shown = all.filter(function (m) {
+      shown = all.filter(function (m) {
         if (state.tag && !(Array.isArray(m.data.tags) && m.data.tags.indexOf(state.tag) >= 0)) return false;
         if (!q) return true;
         var h = haystack(m.data);
         return q.split(/\s+/).every(function (w) { return h.indexOf(w) >= 0; });
       });
+      drawSelBar();
       if (!all.length) { listEl.append(el("div", { class: "card notice" }, el("p", { class: "muted", text: "No meetings synced yet." }))); return; }
       if (!shown.length) { listEl.append(el("div", { class: "card notice" }, el("p", { class: "muted", text: "No meetings match." }))); return; }
       shown.forEach(function (m) {
-        var d = m.data;
-        var open = itemsOf(d).filter(function (a) { return !a.done; }).length;
-        var id = d.id || m.path.slice(9, -5);
-        listEl.append(el("a", { class: "card meeting-card", href: "#/meeting/" + encodeURIComponent(id) },
-          el("div", { class: "title", text: d.title || "Untitled meeting" }),
-          el("div", { class: "meta" },
-            el("span", { text: fmtDate(d.date) }),
-            formatDuration(d.duration) ? el("span", { text: formatDuration(d.duration) }) : null,
-            open ? el("span", { class: "open-count", text: open + " open action item" + (open === 1 ? "" : "s") }) : null,
-            notesOf(d) ? null : el("span", { text: "No notes yet" })),
-          Array.isArray(d.tags) && d.tags.length ? el("div", { class: "tags-row" }, d.tags.map(function (t) { return el("span", { class: "tag", text: t }); })) : null));
+        if (!state.selecting) { listEl.append(meetingCard(m)); return; }
+        var on = state.selected.has(m.path);
+        var cb = el("input", { type: "checkbox", class: "check", checked: on, "aria-label": "Select " + (m.data.title || "meeting") });
+        var card = el("label", { class: "card meeting-card selectable" + (on ? " selected" : "") }, cb, el("div", { class: "grow" }, meetingCardBody(m.data)));
+        cb.addEventListener("change", function () {
+          if (cb.checked) state.selected.add(m.path); else state.selected.delete(m.path);
+          card.classList.toggle("selected", cb.checked);
+          drawSelBar();
+        });
+        listEl.append(card);
       });
     }
     drawChips();
@@ -865,8 +1581,11 @@ if (typeof module !== "undefined" && module.exports) {
     var hadFocus = document.activeElement && document.activeElement.type === "search";
     mount([
       el("h1", { text: "Meetings" }),
-      el("div", { class: "search-row" }, search),
+      summaryStrip(),
+      el("div", { class: "search-row" }, search, selectBtn),
       chips,
+      bulkNodes(),
+      selBar,
       listEl,
       state.skipped ? el("p", { class: "small muted", text: state.skipped + " file(s) couldn’t be read and were skipped." }) : null
     ]);
@@ -1037,6 +1756,175 @@ if (typeof module !== "undefined" && module.exports) {
     window.scrollTo(0, y);
   }
 
+  // ----- Share: copy, email, Word, print -----
+  function dateLineOf(d) { return [fmtDate(d.date), formatDuration(d.duration)].filter(Boolean).join(" · "); }
+  /** The meeting as shown on screen, including unsaved edits. */
+  function currentMeeting() { return page ? applyForm(clone(page.baseData), page.form) : null; }
+  function modelOf(obj) { return notesModel(obj, dateLineOf(obj)); }
+
+  /** Copies rich HTML plus plain text. Returns "rich", "plain" or "" (failed). */
+  async function copyRich(html, text) {
+    try {
+      if (navigator.clipboard && navigator.clipboard.write && window.ClipboardItem) {
+        await navigator.clipboard.write([new ClipboardItem({
+          "text/html": new Blob([html], { type: "text/html" }),
+          "text/plain": new Blob([text], { type: "text/plain" })
+        })]);
+        return "rich";
+      }
+    } catch (e) { /* fall through */ }
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) { await navigator.clipboard.writeText(text); return "plain"; }
+    } catch (e) { /* fall through */ }
+    try {
+      var ok = false;
+      var onCopy = function (ev) { ev.clipboardData.setData("text/html", html); ev.clipboardData.setData("text/plain", text); ev.preventDefault(); ok = true; };
+      document.addEventListener("copy", onCopy);
+      document.execCommand("copy");
+      document.removeEventListener("copy", onCopy);
+      if (ok) return "rich";
+    } catch (e) { /* ignore */ }
+    return "";
+  }
+  async function copyNotes() {
+    var model = modelOf(currentMeeting());
+    var how = await copyRich(modelToHtml(model), modelToText(model));
+    if (how) toast(how === "rich" ? "Notes copied — paste into an email or document" : "Notes copied as plain text");
+    else toast("Couldn’t copy. Your browser blocked clipboard access.", true);
+  }
+  function openUrl(url) {
+    suppressUnload = true;
+    var a = el("a", { href: url, rel: "noopener" });
+    document.body.append(a); a.click(); a.remove();
+    setTimeout(function () { suppressUnload = false; }, 1500);
+  }
+  async function emailNotes(to) {
+    var obj = currentMeeting();
+    var model = modelOf(obj);
+    var full = modelToText(model);
+    var plan = planMailto(to, model.title, full, modelToText(model, ["Summary", "Action items"]), 1800);
+    if (plan.short) {
+      var how = await copyRich(modelToHtml(model), full);
+      if (how) toast("The notes are long, so the full version is on your clipboard — paste it into the email.", false, 8000);
+      else toast("The notes are too long for an email link and couldn’t be copied. Use Copy notes or Word instead.", true, 9000);
+    }
+    openUrl(plan.url);
+  }
+  function downloadWord() {
+    var obj = currentMeeting();
+    var bytes = buildDocx(modelOf(obj));
+    var url = URL.createObjectURL(new Blob([bytes], { type: DOCX_MIME }));
+    var a = el("a", { href: url, download: safeFileName(obj.title, ".docx") });
+    document.body.append(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 30000);
+  }
+  function fillPrintView() {
+    var pv = document.getElementById("printView");
+    var r = route();
+    if (r.name !== "meeting" || !page || page.gone) { pv.replaceChildren(); document.body.classList.remove("print-notes"); return; }
+    var model = modelOf(currentMeeting());
+    var nodes = [el("div", { class: "pv-title", text: model.title }), model.dateLine ? el("p", { class: "pv-date", text: model.dateLine }) : null];
+    if (!model.sections.length) nodes.push(el("p", { text: "Notes not written yet." }));
+    model.sections.forEach(function (sec) {
+      nodes.push(el("div", { class: "pv-h", text: sec.title }));
+      var ul = null, sub = null;
+      sec.blocks.forEach(function (b) {
+        if (b.t !== "li") {
+          ul = sub = null;
+          nodes.push(b.t === "h3" ? el("div", { class: "pv-h3", text: b.text }) : el("p", { text: b.text }));
+          return;
+        }
+        if (!ul) { ul = el("ul", { class: sec.title === "Action items" ? "plain" : null }); nodes.push(ul); }
+        if (b.level && ul.lastChild) {
+          if (!sub || sub.parentNode !== ul.lastChild) { sub = el("ul"); ul.lastChild.append(sub); }
+          sub.append(el("li", { text: b.text }));
+        } else { sub = null; ul.append(el("li", { text: b.text })); }
+      });
+    });
+    pv.replaceChildren();
+    appendKids(pv, nodes);
+    document.body.classList.add("print-notes");
+  }
+  window.addEventListener("beforeprint", fillPrintView);
+  window.addEventListener("afterprint", function () { document.body.classList.remove("print-notes"); });
+  function printNotes() { fillPrintView(); window.print(); }
+
+  function closeMenus(except) {
+    document.querySelectorAll(".menu:not(.hidden)").forEach(function (m) {
+      if (m === except) return;
+      m.classList.add("hidden");
+      var b = m.parentNode.querySelector("[aria-expanded]"); if (b) b.setAttribute("aria-expanded", "false");
+    });
+  }
+  document.addEventListener("click", function (e) {
+    document.querySelectorAll(".menu:not(.hidden)").forEach(function (m) { if (!m.parentNode.contains(e.target)) closeMenus(); });
+  });
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape") closeMenus(); });
+
+  function shareMenu() {
+    var rs = recipients();
+    var last = lsGet(KEY_LASTRCPT) || "";
+    var sel = el("select", { "aria-label": "Send to" }, el("option", { value: "", text: "No recipient" }),
+      rs.map(function (r) { return el("option", { value: r.email, text: r.name ? r.name + " <" + r.email + ">" : r.email }); }));
+    sel.value = rs.some(function (r) { return r.email === last; }) ? last : "";
+    sel.addEventListener("change", function () { lsSet(KEY_LASTRCPT, sel.value); });
+    function act(fn) { return function () { closeMenus(); fn(); }; }
+    var menu = el("div", { class: "card menu hidden", role: "menu" },
+      el("button", { class: "btn ghost", type: "button", role: "menuitem", text: "Copy notes", onclick: act(copyNotes) }),
+      el("label", { class: "field", style: "margin:4px 0 0" }, el("span", { text: "Send to" }), sel),
+      el("button", { class: "btn ghost", type: "button", role: "menuitem", text: "Email", onclick: act(function () { emailNotes(sel.value); }) }),
+      el("button", { class: "btn ghost", type: "button", role: "menuitem", text: "Word (.docx)", onclick: act(downloadWord) }),
+      el("button", { class: "btn ghost", type: "button", role: "menuitem", text: "Print / PDF", onclick: act(printNotes) }),
+      el("div", { class: "small muted" }, el("a", { href: "#/settings", text: rs.length ? "Manage recipients" : "Add recipients in Settings" })));
+    var btn = el("button", { class: "btn", type: "button", "aria-haspopup": "true", "aria-expanded": "false", text: "Share",
+      onclick: function () {
+        var opening = menu.classList.contains("hidden");
+        closeMenus(menu);
+        menu.classList.toggle("hidden", !opening);
+        btn.setAttribute("aria-expanded", opening ? "true" : "false");
+      } });
+    return el("div", { class: "share-wrap" }, btn, menu);
+  }
+
+  // ----- Delete meeting -----
+  function dangerZone() {
+    return el("div", { class: "danger-zone" },
+      el("button", { class: "btn danger", type: "button", id: "deleteBtn", text: "Delete meeting", onclick: deleteMeeting }));
+  }
+  async function deleteMeeting() {
+    if (!page || page.saving || page.gone) return;
+    var p = page;
+    var title = p.baseData.title || "Untitled meeting";
+    if (!confirm("Delete “" + title + "”?\n\nThis also deletes the meeting and its audio from your phone the next time the app syncs. This can’t be undone.")) return;
+    var btn = document.getElementById("deleteBtn");
+    if (btn) { btn.disabled = true; btn.textContent = "Deleting…"; }
+    p.saving = true; updateSaveUI();
+    try {
+      var body = { message: "Delete " + String(title).replace(/\s+/g, " ").trim() + " on the web", sha: p.baseSha };
+      if (state.branch) body.branch = state.branch;
+      var res = await api("DELETE", "/contents/" + encodePath(p.path), body);
+      if (res.status === 409 || res.status === 422) throw new ApiError(409, "changed");
+      if (!res.ok && res.status !== 404) throw new ApiError(res.status, describe(res.status, res, true));
+      state.files.delete(p.path);
+      state.selected.delete(p.path);
+      if (page === p) page = null;
+      toast("Deleted “" + title + "”");
+      if (route().name === "meeting") { if (location.hash === "#/") render(); else location.hash = "#/"; }
+    } catch (e) {
+      p.saving = false;
+      if (e.status === 409) {
+        p.gone = true; // skip the dirty guard while reloading
+        await load();
+        if (page === p) { var f = findMeeting(p.id); page = f ? newPage(f.path, f) : null; render(); }
+        toast("This meeting changed on the phone and was reloaded. Check it, then delete again if you still want to.", true, 9000);
+        return;
+      }
+      toast(e.message || "Couldn’t delete.", true);
+      if (btn) { btn.disabled = false; btn.textContent = "Delete meeting"; }
+      if (page === p) updateSaveUI();
+    }
+  }
+
   function renderMeeting(id) {
     if (!page || page.id !== id) {
       var f = findMeeting(id);
@@ -1055,7 +1943,7 @@ if (typeof module !== "undefined" && module.exports) {
     saveBtn = el("button", { class: "btn primary", type: "button", text: "Save", disabled: true, onclick: saveMeeting });
     statusEl = el("span", { class: "status" });
     nodes.push(el("div", { class: "toolbar" },
-      el("a", { class: "btn ghost", href: "#/", text: "← Meetings" }), statusEl, saveBtn));
+      el("a", { class: "btn ghost", href: "#/", text: "← Meetings" }), statusEl, page.gone ? null : shareMenu(), saveBtn));
 
     if (page.pending && page.pending.length) {
       nodes.push(el("div", { class: "warn-box", id: "pending" },
@@ -1077,6 +1965,7 @@ if (typeof module !== "undefined" && module.exports) {
 
     if (!fm.hasNotes) {
       nodes.push(el("div", { class: "card notice" }, el("p", { class: "muted", text: "Notes not written yet." })));
+      nodes.push(dangerZone());
       mount(nodes); updateSaveUI(); return;
     }
 
@@ -1149,6 +2038,7 @@ if (typeof module !== "undefined" && module.exports) {
         fm.showRisks ? null : el("button", { class: "btn ghost", type: "button", text: "+ Add risks", onclick: function () { fm.showRisks = true; rerenderMeeting(); } })));
     }
     if (d.updated) nodes.push(el("p", { class: "small muted", style: "margin-top:18px", text: "Last updated " + fmtDate(d.updated) }));
+    nodes.push(dangerZone());
     mount(nodes);
     updateSaveUI();
   }
