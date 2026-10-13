@@ -8,7 +8,7 @@ struct SettingsView: View {
     @State private var senderAddress = MailSettings.address
     @State private var appPassword = MailSettings.appPassword
     @AppStorage(AppAppearance.key) private var appearance = AppAppearance.system.rawValue
-    @AppStorage(SpeakerDiarizer.sensitivityKey) private var voiceSensitivity = 1
+    @AppStorage(SpeakerDiarizer.sensitivityKey) private var voiceSensitivity = SpeakerDiarizer.autoSetting
     @AppStorage(Transcriber.engineKey) private var engine = 0
     @State private var testing = false
     @State private var testResult: String?
@@ -284,6 +284,7 @@ struct SettingsView: View {
 
                 Section {
                     Picker("Telling voices apart", selection: $voiceSensitivity) {
+                        Text("Automatic").tag(SpeakerDiarizer.autoSetting)
                         Text("Fewer voices").tag(0)
                         Text("Balanced").tag(1)
                         Text("More voices").tag(2)
@@ -292,7 +293,7 @@ struct SettingsView: View {
                 } header: {
                     Text("Voice separation")
                 } footer: {
-                    Text("If different people end up as one voice, choose More voices. If one person is split into several, choose Fewer voices. Then open the meeting's \u{22EF} menu and tap Re-transcribe and find voices.")
+                    Text("Automatic looks for every voice, then folds tiny fragments back into the person they sound like. If different people end up as one voice, choose More voices. If one person is split into several, choose Fewer voices. Then open the meeting's \u{22EF} menu and tap Re-transcribe and find voices.")
                 }
 
                 Section {
