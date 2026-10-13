@@ -355,19 +355,18 @@ struct MeetingDetailView: View {
                 .padding(14)
                 .background(Color.accentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 14))
             } else if meeting.hasVoices, let voices = meeting.voices {
-                HStack(spacing: 8) {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) {
-                            ForEach(voices) { voice in
-                                HStack(spacing: 5) {
-                                    Circle().fill(speakerColor(voice.id)).frame(width: 8, height: 8)
-                                    Text(voice.label).font(.caption.weight(.semibold)).lineLimit(1).fixedSize()
-                                }
-                                .padding(.horizontal, 10).padding(.vertical, 5)
-                                .background(Color(.secondarySystemBackground), in: Capsule())
+                HStack(alignment: .top, spacing: 8) {
+                    FlowLayout(spacing: 6, rowSpacing: 6) {
+                        ForEach(voices) { voice in
+                            HStack(spacing: 5) {
+                                Circle().fill(speakerColor(voice.id)).frame(width: 8, height: 8)
+                                Text(voice.label).font(.caption.weight(.semibold)).lineLimit(1)
                             }
+                            .padding(.horizontal, 10).padding(.vertical, 5)
+                            .background(Color(.secondarySystemBackground), in: Capsule())
                         }
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     Button("Edit") { showWhoIsWho = true }.font(.footnote).fixedSize()
                 }
             }
