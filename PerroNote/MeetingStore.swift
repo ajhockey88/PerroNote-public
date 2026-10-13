@@ -325,6 +325,7 @@ final class MeetingStore: ObservableObject {
     func applyIdentification(_ id: UUID, assignments: [String: Person], attendeeNames: [String],
                              people: PeopleStore) async {
         let oldLabels = Dictionary(uniqueKeysWithValues: (meeting(id)?.voices ?? []).map { ($0.id, $0.label) })
+        let previousNames = meeting(id)?.attendeeNames ?? meeting(id)?.notes?.attendees ?? []
         update(id) { m in
             m.attendeeNames = attendeeNames
             if var voices = m.voices {
@@ -354,9 +355,17 @@ final class MeetingStore: ObservableObject {
         for voice in m.voices ?? [] {
             if let old = oldLabels[voice.id], old != voice.label { renames[old] = voice.label }
         }
+        // An attendee edited in the list: pair removed and added names so the old one is replaced, not kept beside the new one.
+        func isIn(_ list: [String], _ name: String) -> Bool { list.contains { $0.caseInsensitiveCompare(name) == .orderedSame } }
+        let removedNames = previousNames.filter { !isIn(attendeeNames, $0) && !MeetingNotes.isSpeakerLabel($0) }
+        let addedNames = attendeeNames.filter { !isIn(previousNames, $0) }
+        if removedNames.count == addedNames.count {
+            for (old, new) in zip(removedNames, addedNames) where renames[old] == nil { renames[old] = new }
+        }
         update(id) { m in
             guard var notes = m.notes else { return }
             notes.replaceNames(renames)
+            notes.attendees.removeAll { name in removedNames.contains { $0.caseInsensitiveCompare(name) == .orderedSame } }
             for name in attendeeNames where !notes.attendees.contains(where: { $0.caseInsensitiveCompare(name) == .orderedSame }) {
                 notes.attendees.append(name)
             }

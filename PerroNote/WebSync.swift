@@ -173,6 +173,15 @@ enum WebSync {
         }
         local["action-items.json"] = try encoder.encode(store.looseItems)
 
+        // Recipients are shared both ways. The first time, whatever either side has is kept.
+        if let sha = remote["recipients.json"], seen["recipients.json"] == nil,
+           let theirs = try? decoder.decode([OutlookAccount].self, from: try await download(sha)) {
+            var merged = OutlookSettings.accounts
+            for a in theirs where !merged.contains(where: { $0.email.caseInsensitiveCompare(a.email) == .orderedSame }) { merged.append(a) }
+            OutlookSettings.accounts = merged
+        }
+        local["recipients.json"] = try recipientData()
+
         // A meeting file that was synced before and is gone from GitHub was deleted on the web.
         // If GitHub has no meetings at all (a new or emptied repo), nothing is deleted; everything is sent again.
         let remoteHasMeetings = remote.keys.contains { $0.hasPrefix("meetings/") }
@@ -210,7 +219,9 @@ enum WebSync {
             } else if let remoteSHA {
                 // Edited on the web: bring it into the app.
                 let incoming = try await download(remoteSHA)
-                if path == "action-items.json" {
+                if path == "recipients.json" {
+                    OutlookSettings.accounts = try decoder.decode([OutlookAccount].self, from: incoming)
+                } else if path == "action-items.json" {
                     let items = try decoder.decode([ActionItem].self, from: incoming)
                     store.replaceLooseItems(items)
                 } else {
@@ -234,12 +245,55 @@ enum WebSync {
             try await remove(path, sha: sha, branch: branch)
             seen[path] = nil
         }
+
+        await sendOutbox(remote: remote, branch: branch, store: store)
         return outcome
+    }
+
+    private static func recipientData() throws -> Data {
+        let list = OutlookSettings.accounts.map { Mail(id: $0.id, name: $0.name, email: $0.email) }
+        return try encoder.encode(list)
+    }
+
+    private struct Mail: Codable { var id: UUID; var name: String; var email: String }
+
+    /// A request to email a meeting, left in the repo by the website. The phone sends it the same way as the Send button.
+    private struct OutboxRequest: Codable { var meetingId: UUID; var email: String; var name: String? }
+
+    @MainActor
+    private static func sendOutbox(remote: [String: String], branch: String?, store: MeetingStore) async {
+        let credentials = GmailMailer.Credentials(address: MailSettings.address, appPassword: MailSettings.appPassword)
+        guard !credentials.address.isEmpty, !credentials.appPassword.isEmpty else { return }
+        for (path, sha) in remote where path.hasPrefix("outbox/") && path.hasSuffix(".json") {
+            guard let data = try? await download(sha),
+                  let req = try? JSONDecoder().decode(OutboxRequest.self, from: data) else {
+                try? await remove(path, sha: sha, branch: branch)
+                continue
+            }
+            guard let meeting = store.meeting(req.meetingId), let notes = meeting.notes else {
+                try? await remove(path, sha: sha, branch: branch)
+                continue
+            }
+            let account = OutlookAccount(name: req.name ?? req.email, email: req.email)
+            guard account.isValid else { try? await remove(path, sha: sha, branch: branch); continue }
+            let attachment = GmailMailer.Attachment(
+                name: MeetingDocx.fileName(for: meeting), mimeType: MeetingDocx.mimeType,
+                data: MeetingDocx.data(for: meeting, notes: notes))
+            do {
+                try await GmailMailer.send(from: credentials, to: account, subject: MeetingExport.subject(meeting),
+                                           html: MeetingExport.html(for: meeting, notes: notes),
+                                           plain: MeetingExport.plainText(for: meeting, notes: notes), attachment: attachment)
+                try? await remove(path, sha: sha, branch: branch)
+            } catch {
+                continue // stays in the outbox and is tried again next round
+            }
+        }
     }
 
     @MainActor
     private static func localData(for path: String, store: MeetingStore) -> Data? {
         if path == "action-items.json" { return try? encoder.encode(store.looseItems) }
+        if path == "recipients.json" { return try? recipientData() }
         let id = path.dropFirst("meetings/".count).dropLast(".json".count)
         guard let uuid = UUID(uuidString: String(id)), let m = store.meeting(uuid) else { return nil }
         let record = Record(id: m.id, title: m.title, date: m.date, duration: m.duration,

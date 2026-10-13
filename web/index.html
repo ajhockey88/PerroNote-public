@@ -180,6 +180,30 @@ label.field > span { display: block; font-size: 13px; font-weight: 600; margin-b
 .topic:first-of-type { border-top: 0; padding-top: 0; margin-top: 0; }
 .topic-head { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
 .topic-head input { font-weight: 650; }
+.cal-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.cal-head h2 { margin: 0 auto 0 4px; font-size: 18px; }
+.cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+.cal-dow { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); text-align: center; padding: 4px 0; }
+.cal-day { min-height: 74px; padding: 4px 5px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); text-align: left; font: inherit; color: inherit; cursor: pointer; overflow: hidden; display: block; width: 100%; }
+.cal-day.out { opacity: .45; }
+.cal-day.today .n { background: var(--accent); color: #fff; }
+.cal-day.sel { border-color: var(--orange); box-shadow: 0 0 0 1px var(--orange); }
+.cal-day .n { display: inline-block; min-width: 20px; text-align: center; border-radius: 999px; font-size: 12px; font-weight: 650; }
+.cal-ev { display: block; font-size: 11px; line-height: 1.3; margin-top: 2px; padding: 1px 4px; border-radius: 5px; background: var(--accent-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cal-ev.mtg { background: var(--surface-2); color: var(--muted); }
+.cal-ev.od { background: color-mix(in srgb, var(--red) 18%, transparent); }
+.cal-more { font-size: 11px; color: var(--muted); margin-top: 2px; }
+@media (max-width: 640px) { .cal-day { min-height: 52px; } .cal-ev { display: none; } .cal-day .dots { display: flex; gap: 3px; margin-top: 4px; flex-wrap: wrap; } }
+@media (min-width: 641px) { .cal-day .dots { display: none; } }
+.cal-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+.cal-dot.mtg { background: var(--muted); }
+.brow { display: flex; gap: 8px; align-items: flex-start; margin-bottom: 4px; }
+.brow .bul { flex: 0 0 18px; text-align: center; padding-top: 9px; color: var(--accent-strong); font-weight: 700; line-height: 1.5; }
+.brow.sub { margin-left: 26px; }
+.brow.sub .bul { color: var(--muted); }
+.brow textarea { flex: 1; min-width: 0; }
+.brow .mini { flex: 0 0 auto; padding: 6px 8px; font-size: 12px; }
+.section.changed, .section.changed.summary { border-color: var(--orange); box-shadow: 0 0 0 1px var(--orange); }
 .subs { margin: 8px 0 0; padding: 10px 12px; border-radius: 10px; border: 1px dashed var(--border); font-size: 13px; color: var(--muted); }
 .subs .pt { color: var(--text); font-weight: 550; margin-top: 4px; }
 .subs ul { margin: 2px 0 0; padding-left: 20px; }
@@ -536,6 +560,7 @@ label.mrow.sel { box-shadow: 0 0 0 3px var(--accent-soft); }
       <a class="tab" href="#/meetings" data-tab="meetings">Meetings</a>
       <a class="tab" href="#/actions" data-tab="actions">Action items</a>
       <a class="tab" href="#/people" data-tab="people">People</a>
+      <a class="tab" href="#/calendar" data-tab="calendar">Calendar</a>
       <a class="tab" href="#/dates" data-tab="dates">Dates &amp; risks</a>
     </nav>
     <div class="top-actions">
@@ -1118,7 +1143,7 @@ if (typeof module !== "undefined" && module.exports) {
 <script id="app-script">
 "use strict";
 (function () {
-  var LOOSE = "action-items.json";
+  var LOOSE = "action-items.json", RCPT_FILE = "recipients.json";
   var DEFAULT_REPO = "ajhockey88/perronote-data";
   var KEY_REPO = "perronote.repo", KEY_TOKEN = "perronote.token", KEY_SHOWDONE = "perronote.showDone";
   var KEY_NAME = "perronote.myName", KEY_RCPT = "perronote.recipients", KEY_LASTRCPT = "perronote.lastRecipient", KEY_OWNER = "perronote.ownerFilter";
@@ -1145,7 +1170,38 @@ if (typeof module !== "undefined" && module.exports) {
       return Array.isArray(arr) ? arr.filter(function (r) { return r && typeof r.email === "string" && r.email; }) : [];
     } catch (e) { return []; }
   }
-  function saveRecipients(arr) { lsSet(KEY_RCPT, JSON.stringify(arr)); }
+  function saveRecipients(arr) {
+    arr = arr.map(function (r) { return { id: r.id || newId(), name: r.name || "", email: r.email }; });
+    lsSet(KEY_RCPT, JSON.stringify(arr));
+    pushRecipients(arr, false);
+  }
+  /** Recipients live in the data repo so the phone and website share them. */
+  async function pushRecipients(arr, retried) {
+    if (!configured()) return;
+    var f = state.files.get(RCPT_FILE);
+    try { await putFile(RCPT_FILE, arr, f ? f.sha : null, "recipients"); }
+    catch (e) {
+      if (e.status === 409 && !retried) {
+        try {
+          var cur = await apiJSON("GET", "/contents/" + RCPT_FILE + (state.branch ? "?ref=" + encodeURIComponent(state.branch) : ""), null, [404]);
+          state.files.set(RCPT_FILE, { sha: cur.data && cur.data.sha, data: [] });
+          if (!(cur.data && cur.data.sha)) state.files.delete(RCPT_FILE);
+          return pushRecipients(arr, true);
+        } catch (e2) { /* fall through */ }
+      }
+      toast("Recipients saved here, but not synced to the phone yet.", true);
+    }
+  }
+  function adoptRecipients() {
+    var f = state.files.get(RCPT_FILE);
+    if (f && Array.isArray(f.data)) {
+      var arr = f.data.filter(function (r) { return r && typeof r.email === "string" && r.email; });
+      lsSet(KEY_RCPT, JSON.stringify(arr));
+    } else {
+      var local = recipients();
+      if (local.length) saveRecipients(local);
+    }
+  }
 
   // Wide screens get the sidebar, the home dashboard and the meetings list beside the open meeting.
   var deskMQ = window.matchMedia("(min-width: 1024px)");
@@ -1172,6 +1228,8 @@ if (typeof module !== "undefined" && module.exports) {
     bulk: null,           // { done, total } while a bulk edit runs
     bulkMsg: null,        // { ok, text, lines } after one finishes
     showDone: lsGet(KEY_SHOWDONE) === "1",
+    actionsView: lsGet("perronote.actionsView") === "calendar" ? "calendar" : "list",
+    calMonth: null, calDay: null,
     adding: false,
     dateFilter: "all"     // all, today, yesterday, thisWeek, lastWeek, thisMonth or day:YYYY-MM-DD
   };
@@ -1292,7 +1350,7 @@ if (typeof module !== "undefined" && module.exports) {
     await Promise.all(workers);
   }
 
-  function isDataPath(p) { return p === LOOSE || /^meetings\/[^/]+\.json$/.test(p); }
+  function isDataPath(p) { return p === LOOSE || p === RCPT_FILE || /^meetings\/[^/]+\.json$/.test(p); }
 
   function load() {
     if (!configured()) return Promise.resolve();
@@ -1330,6 +1388,7 @@ if (typeof module !== "undefined" && module.exports) {
           state.skipped = skipped;
           state.files = next;
           state.empty = false;
+          adoptRecipients();
         }
         state.loaded = true;
         state.error = null;
@@ -1425,6 +1484,7 @@ if (typeof module !== "undefined" && module.exports) {
     if (parts[0] === "people") return { name: "people" };
     if (parts[0] === "person" && parts[1]) return { name: "person", key: decodeURIComponent(h.slice(7)) };
     if (parts[0] === "dates") return { name: "dates" };
+    if (parts[0] === "calendar") return { name: "calendar" };
     if (parts[0] === "tags") return { name: "tags" };
     if (parts[0] === "settings") return { name: "settings" };
     if (parts[0] === "home") return { name: "home" };
@@ -1502,7 +1562,7 @@ if (typeof module !== "undefined" && module.exports) {
     requestAnimationFrame(growAll);
   }
   function updateTabs(r) {
-    var tab = { meetings: "meetings", meeting: "meetings", tags: "meetings", actions: "actions", people: "people", person: "people", dates: "dates" }[r.name] || "";
+    var tab = { meetings: "meetings", meeting: "meetings", tags: "meetings", actions: "actions", people: "people", person: "people", calendar: "calendar", dates: "dates" }[r.name] || "";
     document.querySelectorAll(".tab").forEach(function (t) {
       var on = t.dataset.tab === tab;
       t.classList.toggle("active", on);
@@ -1533,6 +1593,7 @@ if (typeof module !== "undefined" && module.exports) {
     if (r.name === "people") return renderPeople();
     if (r.name === "person") return renderPerson(r.key);
     if (r.name === "dates") return renderDates();
+    if (r.name === "calendar") return renderCalendar();
     if (r.name === "tags") return renderTags();
     if (r.name === "home") return renderHome();
     return renderMeetings();
@@ -1645,7 +1706,7 @@ if (typeof module !== "undefined" && module.exports) {
     });
     var rPanel = el("div", { class: "card panel" },
       el("h2", { text: "Email recipients" }),
-      el("p", { class: "small muted", style: "margin:0 0 12px", text: "People you can pick under Share › Send to on a meeting. Stored in this browser only." }),
+      el("p", { class: "small muted", style: "margin:0 0 12px", text: "People you can pick under Share › Send to on a meeting. Shared with the phone." }),
       list, rForm, rErr);
     var tagsPanel = el("div", { class: "card panel" },
       el("h2", { text: "Tags" }),
@@ -2098,6 +2159,7 @@ if (typeof module !== "undefined" && module.exports) {
     meetings: '<rect x="5" y="3" width="14" height="18" rx="2.5"/><path d="M9 8h6M9 12h6M9 16h3.5"/>',
     actions: '<path d="m4.5 12.5 4.5 4.5L19.5 6.5"/>',
     people: '<circle cx="9" cy="8" r="3.4"/><path d="M2.8 20c.8-3.5 3.3-5.4 6.2-5.4s5.4 1.9 6.2 5.4"/><path d="M15.5 4.9a3.2 3.2 0 0 1 0 6.2M17.5 14.8c2 .5 3.3 2.2 3.8 5.2"/>',
+    calendar: '<rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4M8 14h2M14 14h2M8 17.5h2"/>',
     dates: '<rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/>',
     refresh: '<path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/>',
     gear: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
@@ -2116,7 +2178,7 @@ if (typeof module !== "undefined" && module.exports) {
   function renderSidebar(r) {
     var side = document.getElementById("sidebar");
     if (!isDesktop() || !configured()) { side.replaceChildren(); return; }
-    var active = { home: "home", meetings: "meetings", meeting: "meetings", tags: "meetings", actions: "actions", people: "people", person: "people", dates: "dates" }[r.name];
+    var active = { home: "home", meetings: "meetings", meeting: "meetings", tags: "meetings", actions: "actions", people: "people", person: "people", calendar: "calendar", dates: "dates" }[r.name];
     var badge = null, tagList = [], counts = {};
     if (state.loaded) {
       var st = itemStats(allRows().map(function (x) { return x.item; }), myName(), new Date());
@@ -2140,6 +2202,7 @@ if (typeof module !== "undefined" && module.exports) {
           link("meetings", "#/meetings", "Meetings"),
           link("actions", "#/actions", "Action items", badge),
           link("people", "#/people", "People"),
+          link("calendar", "#/calendar", "Calendar"),
           link("dates", "#/dates", "Dates & risks")),
         tagList.length ? [el("div", { class: "side-h", text: "Tags" }), tagList.map(function (t) {
           return el("a", { class: "side-tag" + (onList && state.tag === t ? " active" : ""), href: "#/meetings", title: "Show meetings tagged " + t,
@@ -2271,7 +2334,12 @@ if (typeof module !== "undefined" && module.exports) {
       showKeyDates: !!(n && Array.isArray(n.keyDates) && n.keyDates.length),
       showRisks: !!(n && Array.isArray(n.risks) && n.risks.length),
       useTopics: topics.length > 0,
-      topics: topics.map(function (t) { return { id: t.id, title: t.title || "", points: listToLines(t.points) }; }),
+      topics: topics.map(function (t) {
+        var one = function (x) { return String(x == null ? "" : x).replace(/\s*\n\s*/g, " "); };
+        return { id: t.id, title: t.title || "", points: (Array.isArray(t.points) ? t.points : []).map(function (pt, i) {
+          return { text: one(pt), subs: (Array.isArray(t.subs) && Array.isArray(t.subs[i]) ? t.subs[i] : []).map(one) };
+        }) };
+      }),
       items: (n && Array.isArray(n.actionItems) ? n.actionItems.filter(Boolean) : []).map(function (a) {
         return { id: a.id, task: a.task || "", owner: a.owner || "", due: a.due || "", done: !!a.done };
       })
@@ -2301,9 +2369,14 @@ if (typeof module !== "undefined" && module.exports) {
       var oldTopics = new Map((Array.isArray(n.topics) ? n.topics : []).filter(function (t) { return t && t.id; }).map(function (t) { return [t.id, t]; }));
       n.topics = f.topics.map(function (ft) {
         var t = oldTopics.get(ft.id) || { id: ft.id };
-        var pts = linesToList(ft.points);
-        var subs = alignSubs(t.points, t.subs, pts);
-        if (subs) t.subs = subs; else delete t.subs;
+        var pts = [], subs = [];
+        ft.points.forEach(function (pt) {
+          var tx = pt.text.trim();
+          if (!tx) return;
+          pts.push(tx);
+          subs.push(pt.subs.map(function (x) { return x.trim(); }).filter(Boolean));
+        });
+        if (subs.some(function (x) { return x.length; })) t.subs = subs; else delete t.subs;
         t.title = ft.title;
         t.points = pts;
         return t;
@@ -2342,6 +2415,10 @@ if (typeof module !== "undefined" && module.exports) {
     saveBtn.textContent = page.saving ? "Saving…" : "Save";
     statusEl.textContent = page.saving ? "" : dirty ? "Unsaved changes" : "";
     statusEl.className = "status" + (dirty ? " dirty" : "");
+    document.querySelectorAll("[data-k]").forEach(function (n) {
+      var k = n.getAttribute("data-k");
+      n.classList.toggle("changed", JSON.stringify(page.form[k]) !== JSON.stringify(page.initialForm[k]));
+    });
   }
   function pendingEdits(a, b) {
     var out = [];
@@ -2351,7 +2428,8 @@ if (typeof module !== "undefined" && module.exports) {
     var at = new Map(a.topics.map(function (t) { return [t.id, t]; }));
     b.topics.forEach(function (t) {
       var o = at.get(t.id);
-      if (!o || o.title !== t.title || o.points !== t.points) out.push({ label: "Topic: " + (t.title || "(untitled)"), value: t.points });
+      var pt = function (x) { return x.points.map(function (p) { return "• " + p.text + p.subs.map(function (q) { return "\n   – " + q; }).join(""); }).join("\n"); };
+      if (!o || o.title !== t.title || pt(o) !== pt(t)) out.push({ label: "Topic: " + (t.title || "(untitled)"), value: pt(t) });
       at.delete(t.id);
     });
     at.forEach(function (t) { out.push({ label: "Removed topic", value: t.title }); });
@@ -2404,8 +2482,67 @@ if (typeof module !== "undefined" && module.exports) {
     }
   }
 
-  function section(title, body, extra, cls) {
-    return el("section", { class: "card section" + (cls ? " " + cls : "") }, el("h2", { text: title }), body, extra || null);
+  function section(title, body, extra, cls, key) {
+    return el("section", { class: "card section" + (cls ? " " + cls : ""), "data-k": key }, el("h2", { text: title }), body, extra || null);
+  }
+  /** A bulleted list editor over an array of strings; Enter adds a bullet, Backspace on an empty one removes it. */
+  function bulletRows(items, onchange, placeholder, sub) {
+    var box = el("div", { class: "brows" });
+    function draw(focusAt) {
+      box.replaceChildren();
+      items.forEach(function (txt, i) {
+        var ta = autoTextarea(txt, function (v) { items[i] = v; onchange(); }, placeholder);
+        ta.addEventListener("keydown", function (e) {
+          if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); items.splice(i + 1, 0, ""); onchange(); draw(i + 1); }
+          else if (e.key === "Backspace" && ta.value === "" && items.length > 1) { e.preventDefault(); items.splice(i, 1); onchange(); draw(Math.max(0, i - 1)); }
+        });
+        box.append(el("div", { class: "brow" + (sub ? " sub" : "") }, el("span", { class: "bul", text: sub ? "–" : "•" }), ta,
+          el("button", { class: "btn ghost mini", type: "button", "aria-label": "Remove", title: "Remove", text: "✕",
+            onclick: function () { items.splice(i, 1); if (!items.length) items.push(""); onchange(); draw(Math.min(i, items.length - 1)); } })));
+      });
+      growAll();
+      if (focusAt != null) { var t = box.querySelectorAll("textarea")[focusAt]; if (t) t.focus(); }
+    }
+    draw(null);
+    return box;
+  }
+  /** Topic points with their sub-bullets, laid out like the Word document. */
+  function pointRows(topic) {
+    var box = el("div", { class: "brows" });
+    if (!topic.points.length) topic.points.push({ text: "", subs: [] });
+    function draw(focus) {
+      box.replaceChildren();
+      topic.points.forEach(function (pt, i) {
+        var ta = autoTextarea(pt.text, function (v) { pt.text = v; updateSaveUI(); }, "Point");
+        ta.addEventListener("keydown", function (e) {
+          if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); topic.points.splice(i + 1, 0, { text: "", subs: [] }); updateSaveUI(); draw({ p: i + 1 }); }
+          else if (e.key === "Backspace" && ta.value === "" && !pt.subs.length && topic.points.length > 1) { e.preventDefault(); topic.points.splice(i, 1); updateSaveUI(); draw({ p: Math.max(0, i - 1) }); }
+        });
+        box.append(el("div", { class: "brow" }, el("span", { class: "bul", text: "•" }), ta,
+          el("button", { class: "btn ghost mini", type: "button", title: "Add a sub-bullet", "aria-label": "Add a sub-bullet", text: "+ sub",
+            onclick: function () { pt.subs.push(""); updateSaveUI(); draw({ p: i, s: pt.subs.length - 1 }); } }),
+          el("button", { class: "btn ghost mini", type: "button", title: "Remove", "aria-label": "Remove point", text: "✕",
+            onclick: function () { topic.points.splice(i, 1); if (!topic.points.length) topic.points.push({ text: "", subs: [] }); updateSaveUI(); draw(null); } })));
+        pt.subs.forEach(function (sx, j) {
+          var st = autoTextarea(sx, function (v) { pt.subs[j] = v; updateSaveUI(); }, "Sub-bullet");
+          st.addEventListener("keydown", function (e) {
+            if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); pt.subs.splice(j + 1, 0, ""); updateSaveUI(); draw({ p: i, s: j + 1 }); }
+            else if (e.key === "Backspace" && st.value === "") { e.preventDefault(); pt.subs.splice(j, 1); updateSaveUI(); draw(j > 0 ? { p: i, s: j - 1 } : { p: i }); }
+          });
+          box.append(el("div", { class: "brow sub", "data-p": i, "data-s": j }, el("span", { class: "bul", text: "–" }), st,
+            el("button", { class: "btn ghost mini", type: "button", title: "Remove", "aria-label": "Remove sub-bullet", text: "✕",
+              onclick: function () { pt.subs.splice(j, 1); updateSaveUI(); draw(null); } })));
+        });
+      });
+      growAll();
+      if (focus) {
+        var sel = focus.s != null ? '.brow.sub[data-p="' + focus.p + '"][data-s="' + focus.s + '"] textarea' : null;
+        var t = sel ? box.querySelector(sel) : box.querySelectorAll(".brow:not(.sub) textarea")[focus.p];
+        if (t) t.focus();
+      }
+    }
+    draw(null);
+    return box;
   }
   /** Attendees as name chips: tap a name for their page, ✕ to remove, + Add to type one (suggests people from other meetings). */
   function attendeesSection() {
@@ -2450,7 +2587,7 @@ if (typeof module !== "undefined" && module.exports) {
       setTimeout(function () { inp.focus(); }, 0);
     }
     draw(false);
-    return el("section", { class: "card section" }, el("h2", null, "Attendees", count), box);
+    return el("section", { class: "card section", "data-k": "attendees" }, el("h2", null, "Attendees", count), box);
   }
   /** The meeting's tags as chips under the date: ✕ removes one, + Add tag types one (suggests tags already in use). */
   function tagChips() {
@@ -2501,7 +2638,8 @@ if (typeof module !== "undefined" && module.exports) {
   }
   function listSection(title, key, placeholder) {
     var f = page.form;
-    return section(title, autoTextarea(f[key], function (v) { f[key] = v; updateSaveUI(); }, placeholder));
+    var items = f[key] ? f[key].split("\n") : [""];
+    return section(title, bulletRows(items, function () { f[key] = items.join("\n"); updateSaveUI(); }, placeholder), null, null, key);
   }
   function rerenderMeeting() {
     var y = window.scrollY;
@@ -2551,7 +2689,8 @@ if (typeof module !== "undefined" && module.exports) {
     document.body.append(a); a.click(); a.remove();
     setTimeout(function () { suppressUnload = false; }, 1500);
   }
-  async function emailNotes(to) {
+  /** Opens a plain email draft with the notes in the body (no attachment possible this way). */
+  async function emailDraft(to) {
     var obj = currentMeeting();
     var model = modelOf(obj);
     var full = modelToText(model);
@@ -2562,6 +2701,18 @@ if (typeof module !== "undefined" && module.exports) {
       else toast("The notes are too long for an email link and couldn’t be copied. Use Copy notes or Word instead.", true, 9000);
     }
     openUrl(plan.url);
+  }
+  /** Asks the phone to send the meeting the same way as its Send button: same layout, Word document attached. */
+  async function emailNotes(to) {
+    if (!to) { toast("Pick a recipient first, or use “Open draft in mail app”.", true); return; }
+    if (!page || page.gone) return;
+    if (isDirty()) { await saveMeeting(); if (isDirty()) return; }
+    var rcpt = recipients().find(function (r) { return r.email === to; });
+    var id = newId();
+    try {
+      await putFile("outbox/" + id + ".json", { meetingId: String(page.baseData.id || page.id), email: to, name: rcpt && rcpt.name || "" }, null, "email request");
+      toast("Queued. The phone sends it, with the Word document attached, the next time PerroNote syncs.", false, 8000);
+    } catch (e) { toast(e.message || "Couldn’t queue the email.", true); }
   }
   function downloadWord() {
     var obj = currentMeeting();
@@ -2625,7 +2776,8 @@ if (typeof module !== "undefined" && module.exports) {
     var menu = el("div", { class: "card menu hidden", role: "menu" },
       emailOnly ? null : el("button", { class: "btn ghost", type: "button", role: "menuitem", text: "Copy notes", onclick: act(copyNotes) }),
       el("label", { class: "field", style: "margin:4px 0 0" }, el("span", { text: "Send to" }), sel),
-      el("button", { class: emailOnly ? "btn primary" : "btn ghost", type: "button", role: "menuitem", text: emailOnly ? "Open email" : "Email", onclick: act(function () { emailNotes(sel.value); }) }),
+      el("button", { class: emailOnly ? "btn primary" : "btn ghost", type: "button", role: "menuitem", text: "Send from phone", title: "The phone emails it in the app’s format with the Word document attached", onclick: act(function () { emailNotes(sel.value); }) }),
+      el("button", { class: "btn ghost", type: "button", role: "menuitem", text: "Open draft in mail app", onclick: act(function () { emailDraft(sel.value); }) }),
       emailOnly ? null : el("button", { class: "btn ghost", type: "button", role: "menuitem", text: "Word (.docx)", onclick: act(downloadWord) }),
       emailOnly ? null : el("button", { class: "btn ghost", type: "button", role: "menuitem", text: "Print / PDF", onclick: act(printNotes) }),
       el("div", { class: "small muted" }, el("a", { href: "#/settings", text: rs.length ? "Manage recipients" : "Add recipients in Settings" })));
@@ -2732,36 +2884,23 @@ if (typeof module !== "undefined" && module.exports) {
       mountMeeting(nodes); updateSaveUI(); return;
     }
 
-    nodes.push(section("Summary", autoTextarea(fm.summary, function (v) { fm.summary = v; updateSaveUI(); }, "Summary"), null, "summary"));
+    nodes.push(section("Summary", autoTextarea(fm.summary, function (v) { fm.summary = v; updateSaveUI(); }, "Summary"), null, "summary", "summary"));
     nodes.push(attendeesSection());
 
     // Discussion
     if (fm.useTopics) {
-      var oldTopics = new Map(((notesOf(d) || {}).topics || []).filter(Boolean).map(function (t) { return [t.id, t]; }));
       var topicNodes = fm.topics.map(function (t, i) {
         var tIn = el("input", { type: "text", value: t.title, placeholder: "Topic", "aria-label": "Topic title" });
         tIn.addEventListener("input", function () { t.title = tIn.value; updateSaveUI(); });
-        var orig = oldTopics.get(t.id);
-        var subsBox = null;
-        if (orig && Array.isArray(orig.subs) && orig.subs.some(function (s) { return Array.isArray(s) && s.length; })) {
-          var pts = Array.isArray(orig.points) ? orig.points : [];
-          subsBox = el("div", { class: "subs" }, el("div", { class: "small", text: "Sub-bullets (read-only, kept with their points)" }),
-            pts.map(function (p, j) {
-              var s = orig.subs[j];
-              if (!Array.isArray(s) || !s.length) return null;
-              return [el("div", { class: "pt", text: p }), el("ul", null, s.map(function (x) { return el("li", { text: x }); }))];
-            }));
-        }
         return el("div", { class: "topic" },
           el("div", { class: "topic-head" }, tIn,
             el("button", { class: "btn ghost", type: "button", title: "Remove topic", "aria-label": "Remove topic", text: "✕",
               onclick: function () { if (confirm("Remove this topic?")) { fm.topics.splice(i, 1); rerenderMeeting(); updateSaveUI(); } } })),
-          autoTextarea(t.points, function (v) { t.points = v; updateSaveUI(); }, "One point per line"),
-          subsBox);
+          pointRows(t));
       });
       nodes.push(section("Discussion", topicNodes,
         el("div", { class: "add-row", style: "margin-top:12px" }, el("button", { class: "btn", type: "button", text: "+ Add topic",
-          onclick: function () { fm.topics.push({ id: newId(), title: "", points: "" }); rerenderMeeting(); updateSaveUI(); } }))));
+          onclick: function () { fm.topics.push({ id: newId(), title: "", points: [{ text: "", subs: [] }] }); rerenderMeeting(); updateSaveUI(); } })), null, "topics"));
     } else {
       nodes.push(listSection("Discussion", "discussion", "One point per line"));
     }
@@ -2890,6 +3029,70 @@ if (typeof module !== "undefined" && module.exports) {
     });
   }
 
+  var MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+  function dayKey(d) { return d.getFullYear() + "-" + (d.getMonth() + 1) + "-" + d.getDate(); }
+  /** A month grid. events: [{date, label, kind: "item"|"mtg"|"date", overdue, href}]. Returns {node, selected()}. */
+  function calendarGrid(events, rerender) {
+    var now = new Date();
+    if (!state.calMonth) state.calMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    var m = state.calMonth;
+    var byDay = {};
+    events.forEach(function (e) { (byDay[dayKey(e.date)] = byDay[dayKey(e.date)] || []).push(e); });
+    var head = el("div", { class: "cal-head" },
+      el("button", { class: "btn ghost", type: "button", "aria-label": "Previous month", text: "‹", onclick: function () { state.calMonth = new Date(m.getFullYear(), m.getMonth() - 1, 1); state.calDay = null; rerender(); } }),
+      el("h2", { text: MONTH_NAMES[m.getMonth()] + " " + m.getFullYear() }),
+      el("button", { class: "btn ghost", type: "button", text: "Today", onclick: function () { state.calMonth = new Date(now.getFullYear(), now.getMonth(), 1); state.calDay = dayKey(now); rerender(); } }),
+      el("button", { class: "btn ghost", type: "button", "aria-label": "Next month", text: "›", onclick: function () { state.calMonth = new Date(m.getFullYear(), m.getMonth() + 1, 1); state.calDay = null; rerender(); } }));
+    var grid = el("div", { class: "cal-grid" });
+    ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].forEach(function (d) { grid.append(el("div", { class: "cal-dow", text: d })); });
+    var start = new Date(m.getFullYear(), m.getMonth(), 1 - new Date(m.getFullYear(), m.getMonth(), 1).getDay());
+    var today0 = startOfDay(now);
+    for (var i = 0; i < 42; i++) {
+      var d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
+      if (i >= 35 && d.getMonth() !== m.getMonth()) break;
+      var key = dayKey(d), evs = byDay[key] || [];
+      (function (key, d, evs) {
+        var cell = el("button", { type: "button", class: "cal-day" + (d.getMonth() !== m.getMonth() ? " out" : "") + (key === dayKey(now) ? " today" : "") + (state.calDay === key ? " sel" : ""),
+          "aria-label": d.toDateString() + (evs.length ? ", " + evs.length + " entries" : ""),
+          onclick: function () { state.calDay = state.calDay === key ? null : key; rerender(); } },
+          el("span", { class: "n", text: String(d.getDate()) }),
+          evs.slice(0, 3).map(function (e) { return el("span", { class: "cal-ev" + (e.kind === "mtg" ? " mtg" : "") + (e.overdue ? " od" : ""), text: e.label }); }),
+          evs.length > 3 ? el("div", { class: "cal-more", text: "+" + (evs.length - 3) + " more" }) : null,
+          evs.length ? el("div", { class: "dots" }, evs.slice(0, 6).map(function (e) { return el("span", { class: "cal-dot" + (e.kind === "mtg" ? " mtg" : "") }); })) : null);
+        grid.append(cell);
+      })(key, d, evs);
+    }
+    return { node: el("div", { class: "cal" }, head, grid), events: function () { return state.calDay ? byDay[state.calDay] || [] : null; } };
+  }
+
+  function renderCalendar() {
+    var today0 = startOfDay(new Date());
+    var events = [];
+    meetings().forEach(function (m) {
+      var dt = new Date(m.data.date);
+      if (!isNaN(dt.getTime())) events.push({ date: startOfDay(dt), kind: "mtg", label: m.data.title || "Meeting", href: "#/meeting/" + encodeURIComponent(meetingIdOf(m)) });
+      strList((notesOf(m.data) || {}).keyDates).forEach(function (t) {
+        var kd = parseKeyDate(t);
+        if (kd) events.push({ date: kd, kind: "date", label: t, href: "#/meeting/" + encodeURIComponent(meetingIdOf(m)) });
+      });
+    });
+    allRows().forEach(function (r) {
+      if (r.item.done || !r.item.task) return;
+      var du = parseDue(r.item.due);
+      if (du) events.push({ date: startOfDay(du), kind: "item", label: r.item.task, overdue: du < today0, href: r.meetingId ? "#/meeting/" + encodeURIComponent(r.meetingId) : null, owner: r.item.owner });
+    });
+    var cal = calendarGrid(events, renderCalendar);
+    var nodes = [el("h1", { text: "Calendar" }), cal.node];
+    var sel = cal.events();
+    if (sel) {
+      nodes.push(el("div", { class: "card rows", style: "margin-top:14px" }, sel.length ? sel.map(function (e) {
+        var kind = e.kind === "mtg" ? "Meeting" : e.kind === "date" ? "Key date" : "Due" + (e.owner ? " · " + e.owner : "");
+        return el("a", { class: "lrow", href: e.href || null }, el("div", { class: "body" }, el("div", { class: "text", text: e.label }), el("div", { class: "meta", text: kind })));
+      }) : el("div", { class: "lrow" }, el("div", { class: "body" }, el("div", { class: "meta", text: "Nothing on this day." })))));
+    }
+    mount(nodes, "wide");
+  }
+
   function renderActions() {
     var rows = allRows();
     var name = myName();
@@ -2907,8 +3110,10 @@ if (typeof module !== "undefined" && module.exports) {
     doneT.addEventListener("change", function () { state.showDone = doneT.checked; lsSet(KEY_SHOWDONE, doneT.checked ? "1" : "0"); renderActions(); });
     var addBtn = el("button", { class: "btn primary", type: "button", text: "+ Add", onclick: function () { state.adding = !state.adding; renderActions(); } });
 
+    var asCal = state.actionsView === "calendar";
+    var viewBtn = el("button", { class: "btn", type: "button", text: asCal ? "List view" : "Calendar view", onclick: function () { state.actionsView = asCal ? "list" : "calendar"; lsSet("perronote.actionsView", state.actionsView); renderActions(); } });
     var nodes = [el("h1", { text: "Action items" }), summaryStrip(),
-      el("div", { class: "filters" }, sel, el("label", { class: "switch" }, doneT, "Show done"), addBtn)];
+      el("div", { class: "filters" }, sel, el("label", { class: "switch" }, doneT, "Show done"), viewBtn, addBtn)];
     if (state.owner === ME && !name) {
       nodes.push(el("p", { class: "small muted", style: "margin:-6px 0 14px" }, "Showing items owned by “Me”. ", el("a", { href: "#/settings", text: "Add your name in Settings" }), " to include ones with your name."));
     }
@@ -2941,6 +3146,21 @@ if (typeof module !== "undefined" && module.exports) {
       }
       return true;
     });
+    if (asCal) {
+      var t0 = startOfDay(new Date()), evs = [], undated = [];
+      filtered.forEach(function (r) {
+        var du = r.item.task ? parseDue(r.item.due) : null;
+        if (du) evs.push({ date: startOfDay(du), kind: "item", label: r.item.task, overdue: !r.item.done && du < t0, row: r });
+        else undated.push(r);
+      });
+      var cal = calendarGrid(evs, renderActions);
+      nodes.push(cal.node);
+      var picked = cal.events();
+      if (picked) nodes.push(picked.length ? actionGroups(picked.map(function (e) { return e.row; }), renderActions) : el("p", { class: "muted", text: "Nothing due on this day." }));
+      if (undated.length) nodes.push(el("h2", { text: "No date" }), actionGroups(undated, renderActions));
+      mount(nodes);
+      return;
+    }
     var groups = actionGroups(filtered, renderActions);
     if (!groups.length) {
       nodes.push(el("div", { class: "card notice" }, el("p", { class: "muted", text: rows.length ? "Nothing to do here." : "No action items yet." })));
