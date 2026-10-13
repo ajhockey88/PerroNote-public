@@ -355,7 +355,7 @@ struct MeetingDetailView: View {
                 .padding(14)
                 .background(Color.accentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 14))
             } else if meeting.hasVoices, let voices = meeting.voices {
-                HStack(alignment: .top, spacing: 8) {
+                VStack(alignment: .leading, spacing: 6) {
                     FlowLayout(spacing: 6, rowSpacing: 6) {
                         ForEach(voices) { voice in
                             HStack(spacing: 5) {
@@ -367,8 +367,9 @@ struct MeetingDetailView: View {
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    Button("Edit") { showWhoIsWho = true }.font(.footnote).fixedSize()
+                    Button("Edit") { showWhoIsWho = true }.font(.footnote)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
             if let note = meeting.voiceNote {
                 Text(note).font(.footnote).foregroundStyle(.orange)
