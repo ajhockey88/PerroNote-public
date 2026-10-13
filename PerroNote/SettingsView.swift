@@ -253,6 +253,16 @@ struct SettingsView: View {
                     Text("If different people end up as one voice, choose More voices. If one person is split into several, choose Fewer voices. Then open the meeting's \u{22EF} menu and tap Re-transcribe and find voices.")
                 }
 
+                Section {
+                    Text(WidgetStore.groupStatus)
+                        .font(.footnote)
+                        .textSelection(.enabled)
+                } header: {
+                    Text("Widgets")
+                } footer: {
+                    Text("The Home Screen and Lock Screen widgets read your action items from a folder the app shares with them.")
+                }
+
                 Section("Privacy") {
                     Text("Audio stays on your iPhone. It is converted to text and split by voice on the device, and the voice models are downloaded once. Only the transcript text and the names you give are sent to Anthropic to write the notes.")
                         .font(.footnote)

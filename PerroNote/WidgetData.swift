@@ -30,7 +30,9 @@ enum WidgetStore {
 
     /// Which group names were found and whether the shared folder opened, for the widget's "Open PerroNote" note.
     static var groupStatus: String {
-        (folder == nil ? "No shared folder. Tried: " : "Shared folder found. Tried: ") + groupCandidates().joined(separator: ", ")
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?"
+        let state = folder == nil ? "No shared folder" : (readSnapshot() == nil ? "Shared folder found, no items yet" : "Shared folder found with items")
+        return "\(state) (build \(build)). Tried: " + groupCandidates().joined(separator: ", ")
     }
 
     private static let folder: URL? = {
@@ -41,19 +43,12 @@ enum WidgetStore {
     }()
 
     /// SideStore and AltStore rename the group when they re-sign (adding your team ID), so look up the real name:
-    /// first in the installed provisioning profile, then in the app's own signature, then where older AltStore put it.
+    /// first in the installed provisioning profile, then where older AltStore put it.
     private static func groupCandidates() -> [String] {
         var found: [String] = []
         let bundle = Bundle.main.bundleURL
         if let data = try? Data(contentsOf: bundle.appendingPathComponent("embedded.mobileprovision")) {
             found += groups(inPlistWithin: data)
-        }
-        if let exe = Bundle.main.executableURL, let handle = try? FileHandle(forReadingFrom: exe) {
-            // The signature sits at the end of the file.
-            let size = (try? handle.seekToEnd()) ?? 0
-            try? handle.seek(toOffset: size > 4_000_000 ? size - 4_000_000 : 0)
-            if let tail = try? handle.readToEnd() { found += groups(inPlistWithin: tail) }
-            try? handle.close()
         }
         found += Bundle.main.object(forInfoDictionaryKey: "ALTAppGroups") as? [String] ?? []
         let ours = found.filter { $0.lowercased().contains("perronote") }
