@@ -82,18 +82,17 @@ enum NotesGenerator {
     markers are not part of the text; never copy them into the notes.
     - Sub-bullets: where a point has supporting detail, such as reasons, numbers, examples, \
     names or steps, put each detail in that point\'s "sub_points" (short phrases) instead of \
-    making a long point or more top-level points. A point should be one clear statement; most \
-    topics have 2 to 4 points and a point has 0 to 4 sub-points. Do not add sub-points that just \
+    making a long point or more top-level points. A point should be one clear statement; a \
+    topic has as many points as it needs and a point has 0 to 4 sub-points. Do not add sub-points that just \
     repeat the point.
     - Topics: group the discussion by core discussion point. Each topic has a short title (2 to 6 \
-    words) naming the subject and a few concise bullets with the key points, even if the subject \
+    words) naming the subject and concise bullets with the key points, even if the subject \
     came up several times in different parts of the meeting; bring those parts together under one \
-    topic. Order topics by importance or first mention. A short meeting has 2 to 7 topics. The \
-    length of the meeting is given; for longer ones scale up, about one topic for every 5 minutes of \
-    real discussion (an hour is typically 10 to 14 topics) and up to 6 points per topic when there \
-    is that much to say. The notes should stay proportional to the meeting: a long meeting must not be \
-    squeezed into the same few bullets as a short one, and every distinct subject, decision and \
-    commitment should appear. Do not make a topic for small talk. Leave out the discussion field.
+    topic. Order topics by importance or first mention. Do not aim for a number of topics or points: \
+    let the content decide. Put everything that was discussed under the topic it belongs to, and add a \
+    new topic or bullet only when something does not fit an existing one. A long meeting will naturally \
+    have more; a short one fewer. Every distinct subject, decision and commitment should appear somewhere, \
+    and nothing should be left out just to keep the notes short. Do not make a topic for small talk. Leave out the discussion field.
     - Decisions: things the group agreed or decided.
     - Action items: concrete tasks someone committed to or was asked to do. Give the owner \
     when the transcript makes it clear, otherwise leave it out. Give a due date only if one was \
