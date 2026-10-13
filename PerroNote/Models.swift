@@ -360,6 +360,11 @@ enum Vocabulary {
 }
 
 /// The people in one action item's owner field. An owner like "Priya and Sam" counts for both.
+/// Owners like "Everyone" or "Team" mean the item is for all of you, so they show up under any one person.
+func isEveryoneOwner(_ owner: String) -> Bool {
+    ["everyone", "everybody", "all", "team", "the team", "whole team", "all hands"].contains(owner.lowercased())
+}
+
 func actionOwners(_ item: ActionItem) -> [String] {
     guard let owner = item.owner else { return [] }
     return owner

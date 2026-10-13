@@ -18,7 +18,7 @@ struct PeopleView: View {
         var out: [String] = []
         func add(_ name: String) {
             let clean = name.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !clean.isEmpty, !MeetingNotes.isSpeakerLabel(clean), seen.insert(clean.lowercased()).inserted else { return }
+            guard !clean.isEmpty, !MeetingNotes.isSpeakerLabel(clean), !isEveryoneOwner(clean), seen.insert(clean.lowercased()).inserted else { return }
             out.append(clean)
         }
         people.people.forEach { add($0.name) }

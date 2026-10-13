@@ -42,7 +42,7 @@ enum BannerSettings {
     static func matches(_ item: ActionItem, people: [String], myName: String) -> Bool {
         guard !people.isEmpty else { return true }
         return actionOwners(item).contains { owner in
-            people.contains { p in
+            isEveryoneOwner(owner) || people.contains { p in
                 p == me ? isMe(owner, myName: myName) : owner.caseInsensitiveCompare(p) == .orderedSame
             }
         }

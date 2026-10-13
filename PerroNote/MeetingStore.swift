@@ -52,6 +52,13 @@ final class MeetingStore: ObservableObject {
     }
 
     /// Applies a typed change to the notes. These are the words that get emailed and put in the Word file.
+    /// Takes a name off the saved attendee list too, so it isn't offered again in Who's who or shown on the meeting row.
+    func removeAttendeeName(_ id: UUID, _ name: String) {
+        update(id, immediate: false) { m in
+            m.attendeeNames = m.attendeeNames?.filter { $0.caseInsensitiveCompare(name) != .orderedSame }
+        }
+    }
+
     func updateNotes(_ id: UUID, edited: Bool = true, _ change: (inout MeetingNotes) -> Void) {
         update(id, immediate: false) { m in
             guard var notes = m.notes else { return }

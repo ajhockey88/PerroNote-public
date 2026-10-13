@@ -250,6 +250,7 @@ label.field > span { display: block; font-size: 13px; font-weight: 600; margin-b
 .arow { display: flex; gap: 12px; padding: 12px 16px; border-top: 1px solid var(--border); align-items: flex-start; }
 .arow:first-child { border-top: 0; }
 .arow .check { margin-top: 1px; }
+.arow .del-item { padding: 2px 8px; flex: none; }
 .arow .body { min-width: 0; flex: 1; }
 .arow .task { overflow-wrap: anywhere; }
 .arow.done .task { text-decoration: line-through; color: var(--muted); }
@@ -722,17 +723,18 @@ function canonPerson(name, myName) {
 }
 
 /** True when an owner string (possibly several people) includes you: "me", your full name or your first name. */
+function isEveryone(o) { return ["everyone", "everybody", "all", "team", "the team", "whole team", "all hands"].indexOf(lc(o)) >= 0; }
 function isMine(owner, myName) {
   var names = ["me"];
   var full = lc(myName);
   if (full) { names.push(full); names.push(full.split(/\s+/)[0]); }
-  return splitOwners(owner).some(function (o) { return names.indexOf(lc(o)) >= 0; });
+  return splitOwners(owner).some(function (o) { return isEveryone(o) || names.indexOf(lc(o)) >= 0; });
 }
 
 /** True when the owner string includes the person with this lower-case key. */
 function personOwns(owner, key, myName) {
   if (lc(myName) && key === lc(myName)) return isMine(owner, myName);
-  return splitOwners(owner).some(function (o) { return lc(canonPerson(o, myName)) === key; });
+  return splitOwners(owner).some(function (o) { return isEveryone(o) || lc(canonPerson(o, myName)) === key; });
 }
 
 function strList(a) {
@@ -755,7 +757,7 @@ function buildPeople(meetingDatas, loose, myName) {
   var map = {};
   function add(raw) {
     var name = canonPerson(raw, myName);
-    if (!name) return;
+    if (!name || isEveryone(name)) return;
     var k = name.toLowerCase();
     if (!map[k]) map[k] = { name: name, key: k, meetings: 0, open: 0 };
     else if (map[k].name === map[k].name.toLowerCase() && name !== name.toLowerCase()) map[k].name = name;
@@ -2993,6 +2995,31 @@ if (typeof module !== "undefined" && module.exports) {
       return false;
     }
   }
+  /** Removes an action item from its meeting (or the loose list). The phone drops it on its next sync. */
+  async function deleteItem(path, id) {
+    var f = state.files.get(path);
+    if (!f) return false;
+    var obj = clone(f.data);
+    var arr = path === LOOSE ? obj : (obj.notes && obj.notes.actionItems);
+    var i = Array.isArray(arr) ? arr.findIndex(function (a) { return a && a.id === id; }) : -1;
+    if (i < 0) return false;
+    arr.splice(i, 1);
+    if (path !== LOOSE) obj.updated = new Date().toISOString();
+    try {
+      await putFile(path, obj, f.sha, path === LOOSE ? "action items" : (obj.title || "meeting"));
+      if (page && !page.gone && page.path === path && path !== LOOSE) {
+        page.baseSha = state.files.get(path).sha;
+        page.baseData = clone(obj);
+        [page.form, page.initialForm].forEach(function (fm) { fm.items = fm.items.filter(function (y) { return y.id !== id; }); });
+        page.baselineJSON = JSON.stringify(applyForm(clone(obj), page.initialForm));
+      }
+      return true;
+    } catch (e) {
+      if (e.status === 409) { await load(); toast("That changed on the phone and was reloaded. Try again.", true); }
+      else toast(e.message || "Couldn’t delete.", true);
+      return false;
+    }
+  }
   async function addLooseItem(task, dateStr) {
     var f = state.files.get(LOOSE);
     if (f && !Array.isArray(f.data)) { toast("action-items.json isn’t a list; not changing it.", true); return false; }
@@ -3035,12 +3062,19 @@ if (typeof module !== "undefined" && module.exports) {
             if (location.hash === hash) { var y = window.scrollY; rerender(); window.scrollTo(0, y); renderSidebar(route()); }
             if (!ok) { cb.checked = !cb.checked; cb.disabled = false; }
           });
+          var delBtn = el("button", { class: "btn ghost del-item", type: "button", title: "Delete action item", "aria-label": "Delete action item", text: "✕",
+            onclick: async function () {
+              if (!confirm("Delete this action item?\n\n" + (r.item.task || "") + "\n\nIt’s removed from the meeting and from the phone on the next sync.")) return;
+              delBtn.disabled = true;
+              var ok = await deleteItem(r.path, r.item.id);
+              if (ok) { toast("Deleted"); var y = window.scrollY; rerender(); window.scrollTo(0, y); renderSidebar(route()); } else delBtn.disabled = false;
+            } });
           row.append(cb, el("div", { class: "body" },
             el("div", { class: "task", text: r.item.task || "(no task)" }),
             el("div", { class: "meta" },
               r.item.owner ? el("span", { text: r.item.owner }) : null,
               r.item.due ? el("span", { class: "due " + dg, text: r.item.due }) : null,
-              r.meetingTitle ? el("a", { href: "#/meeting/" + encodeURIComponent(r.meetingId), text: r.meetingTitle }) : el("span", { text: "Added by you" }))));
+              r.meetingTitle ? el("a", { href: "#/meeting/" + encodeURIComponent(r.meetingId), text: r.meetingTitle }) : el("span", { text: "Added by you" }))), delBtn);
           return row;
         })));
     });
@@ -3114,7 +3148,7 @@ if (typeof module !== "undefined" && module.exports) {
     var rows = allRows();
     var name = myName();
     var owners = {};
-    rows.forEach(function (r) { splitOwners(r.item.owner).forEach(function (o) { owners[o.toLowerCase()] = owners[o.toLowerCase()] || o; }); });
+    rows.forEach(function (r) { splitOwners(r.item.owner).forEach(function (o) { if (!isEveryone(o)) owners[o.toLowerCase()] = owners[o.toLowerCase()] || o; }); });
     var ownerList = Object.keys(owners).map(function (k) { return owners[k]; }).sort(function (a, b) { return a.localeCompare(b); });
     if (state.owner && state.owner !== ME && !owners[state.owner.toLowerCase()]) state.owner = "";
 
@@ -3159,7 +3193,7 @@ if (typeof module !== "undefined" && module.exports) {
       if (state.owner === ME) return isMine(r.item.owner, name);
       if (state.owner) {
         var want = state.owner.toLowerCase();
-        if (!splitOwners(r.item.owner).some(function (o) { return o.toLowerCase() === want; })) return false;
+        if (!splitOwners(r.item.owner).some(function (o) { return isEveryone(o) || o.toLowerCase() === want; })) return false;
       }
       return true;
     });

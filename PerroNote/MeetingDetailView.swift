@@ -356,16 +356,19 @@ struct MeetingDetailView: View {
                 .background(Color.accentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 14))
             } else if meeting.hasVoices, let voices = meeting.voices {
                 HStack(spacing: 8) {
-                    ForEach(voices) { voice in
-                        HStack(spacing: 5) {
-                            Circle().fill(speakerColor(voice.id)).frame(width: 8, height: 8)
-                            Text(voice.label).font(.caption.weight(.semibold))
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(voices) { voice in
+                                HStack(spacing: 5) {
+                                    Circle().fill(speakerColor(voice.id)).frame(width: 8, height: 8)
+                                    Text(voice.label).font(.caption.weight(.semibold)).lineLimit(1).fixedSize()
+                                }
+                                .padding(.horizontal, 10).padding(.vertical, 5)
+                                .background(Color(.secondarySystemBackground), in: Capsule())
+                            }
                         }
-                        .padding(.horizontal, 10).padding(.vertical, 5)
-                        .background(Color(.secondarySystemBackground), in: Capsule())
                     }
-                    Spacer(minLength: 0)
-                    Button("Edit") { showWhoIsWho = true }.font(.footnote)
+                    Button("Edit") { showWhoIsWho = true }.font(.footnote).fixedSize()
                 }
             }
             if let note = meeting.voiceNote {
@@ -694,6 +697,9 @@ struct MeetingDetailView: View {
                             editor(itemBinding(keyPath, index), title)
                             if let timePrefix { timeButton("\(timePrefix)\(index)") }
                             removeButton {
+                                if keyPath == \MeetingNotes.attendees, notes.attendees.indices.contains(index) {
+                                    store.removeAttendeeName(id, notes.attendees[index])
+                                }
                                 store.updateNotes(id) {
                                     if $0[keyPath: keyPath].indices.contains(index) {
                                         $0[keyPath: keyPath].remove(at: index)

@@ -25,13 +25,13 @@ struct ActionItemsView: View {
         var seen = Set<String>()
         var out: [String] = []
         for item in store.allActionItems where !item.task.isEmpty {
-            for name in actionOwners(item) where seen.insert(name.lowercased()).inserted { out.append(name) }
+            for name in actionOwners(item) where !isEveryoneOwner(name) && seen.insert(name.lowercased()).inserted { out.append(name) }
         }
         return out.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
     }
 
     private func ownedByPick(_ item: ActionItem) -> Bool {
-        person.map { p in actionOwners(item).contains { $0.caseInsensitiveCompare(p) == .orderedSame } } ?? true
+        person.map { p in actionOwners(item).contains { isEveryoneOwner($0) || $0.caseInsensitiveCompare(p) == .orderedSame } } ?? true
     }
 
     /// Items you added yourself that fit the filters. They have no meeting or tags, so a tag filter hides them.
@@ -49,7 +49,7 @@ struct ActionItemsView: View {
             else { return nil }
             let items = (meeting.notes?.actionItems ?? []).filter { item in
                 (showDone || !item.done)
-                    && (person.map { p in actionOwners(item).contains { $0.caseInsensitiveCompare(p) == .orderedSame } } ?? true)
+                    && (person.map { p in actionOwners(item).contains { isEveryoneOwner($0) || $0.caseInsensitiveCompare(p) == .orderedSame } } ?? true)
             }
             return items.isEmpty ? nil : (meeting, items)
         }
