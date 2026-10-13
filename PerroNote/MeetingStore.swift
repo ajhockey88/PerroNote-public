@@ -240,7 +240,8 @@ final class MeetingStore: ObservableObject {
     weak var people: PeopleStore?
 
     /// Transcribes and separates voices (unless a transcript already exists), then drafts the notes.
-    func process(_ id: UUID, regenerateTranscript: Bool = false, voiceCount: Int? = nil) async {
+    func process(_ id: UUID, regenerateTranscript: Bool = false, voiceCount: Int? = nil,
+                 template: NoteTemplate? = nil, standardNotes: Bool = false) async {
         guard let m = meeting(id), !m.isBusy else { return }
 
         if (m.transcript ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || regenerateTranscript {
@@ -306,7 +307,8 @@ final class MeetingStore: ObservableObject {
                 transcript: current.timedTranscript,
                 meetingDate: current.date,
                 attendees: current.attendeeNames ?? [],
-                voicesIdentified: current.hasVoices && (current.speakersConfirmed ?? false))
+                voicesIdentified: current.hasVoices && (current.speakersConfirmed ?? false),
+                template: standardNotes ? nil : (template ?? NoteTemplates.match(date: current.date, tags: current.tags)))
             update(id) {
                 var notes = result.notes
                 let hadNotes = $0.usage?.contains { $0.kind == .draft || $0.kind == .redraft } ?? false

@@ -197,7 +197,7 @@ enum NotesGenerator {
     ]
 
     static func generate(transcript: String, meetingDate: Date, attendees: [String] = [],
-                         voicesIdentified: Bool = false) async throws -> GeneratedNotes {
+                         voicesIdentified: Bool = false, template: NoteTemplate? = nil) async throws -> GeneratedNotes {
         guard let key = Keychain.get(apiKeyName), !key.isEmpty else { throw NotesError.missingKey }
         let text = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { throw NotesError.emptyTranscript }
@@ -212,6 +212,9 @@ enum NotesGenerator {
         }
         if text.contains("Speaker 1:") && !voicesIdentified {
             userMessage += "Speakers are labelled Speaker 1, Speaker 2 and so on because nobody has said who is who yet.\n"
+        }
+        if let template {
+            userMessage += "\nNotes template (\(template.name)). Follow these instructions for the shape of the notes:\n\(template.instructions)\n"
         }
         userMessage += "\nTranscript:\n\(text)"
 

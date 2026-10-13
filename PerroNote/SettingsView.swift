@@ -297,6 +297,12 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    NavigationLink("Note templates") { NoteTemplatesView() }
+                } footer: {
+                    Text("Daily stand-up notes with a section for each person are picked automatically by tag or start time.")
+                }
+
+                Section {
                     Text(WidgetStore.groupStatus)
                         .font(.footnote)
                         .textSelection(.enabled)

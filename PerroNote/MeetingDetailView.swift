@@ -29,6 +29,8 @@ struct MeetingDetailView: View {
     @State private var customAddress = false
     @State private var customEmail = ""
     @State private var voiceCount = 0
+    @State private var redraftTemplate: NoteTemplate?
+    @State private var redraftStandard = false
     @AppStorage(AppAppearance.key) private var appearance = AppAppearance.system.rawValue
     @PaperPitch private var pitch
     @State private var headerHeight: CGFloat = 0
@@ -171,7 +173,8 @@ struct MeetingDetailView: View {
             Button("Redraft and replace my edits", role: .destructive) {
                 let regenerate = pendingRegenerate ?? false
                 pendingRegenerate = nil
-                Task { await store.process(id, regenerateTranscript: regenerate, voiceCount: voiceCount > 1 ? voiceCount : nil) }
+                Task { await store.process(id, regenerateTranscript: regenerate, voiceCount: voiceCount > 1 ? voiceCount : nil,
+                                           template: redraftTemplate, standardNotes: redraftStandard) }
             }
             Button("Cancel", role: .cancel) { pendingRegenerate = nil }
         } message: {
@@ -242,6 +245,13 @@ struct MeetingDetailView: View {
                         Label("Redraft notes", systemImage: "sparkles")
                     }
                     .disabled(meeting.isBusy)
+                    Menu {
+                        Button("Standard notes") { redraftAs(meeting, nil) }
+                        ForEach(NoteTemplates.all) { t in Button(t.name) { redraftAs(meeting, t) } }
+                    } label: {
+                        Label("Redraft as\u{2026}", systemImage: "rectangle.3.group")
+                    }
+                    .disabled(meeting.isBusy)
                     Button { regenerate(meeting, transcript: true) } label: {
                         Label("Re-transcribe and find voices", systemImage: "arrow.clockwise")
                     }
@@ -301,14 +311,23 @@ struct MeetingDetailView: View {
         "Add your Gmail address and app password under Send to Outlook in Settings, so the app can send as you."
     }
 
+    private func redraftAs(_ meeting: Meeting, _ template: NoteTemplate?) {
+        redraftTemplate = template
+        redraftStandard = template == nil
+        startRegenerate(meeting, transcript: false)
+    }
+
     private func regenerate(_ meeting: Meeting, transcript: Bool) {
+        redraftTemplate = nil
+        redraftStandard = false
         if transcript { voiceCount = meeting.voices?.count ?? 0; askingVoices = true; return }
         startRegenerate(meeting, transcript: false)
     }
 
     private func startRegenerate(_ meeting: Meeting, transcript: Bool) {
         if meeting.notesEdited == true { pendingRegenerate = transcript } else {
-            Task { await store.process(id, regenerateTranscript: transcript, voiceCount: voiceCount > 1 ? voiceCount : nil) }
+            Task { await store.process(id, regenerateTranscript: transcript, voiceCount: voiceCount > 1 ? voiceCount : nil,
+                                       template: redraftTemplate, standardNotes: redraftStandard) }
         }
     }
 
