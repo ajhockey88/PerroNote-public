@@ -24,6 +24,10 @@ struct SettingsView: View {
     @AppStorage(DueAlerts.timeKey) private var dueAlertMinutes = 8 * 60
     @EnvironmentObject private var store: MeetingStore
     @State private var alertsDenied = false
+    @AppStorage(WebSync.enabledKey) private var webSync = false
+    @AppStorage(WebSync.repoKey) private var webRepo = ""
+    @State private var webToken = WebSync.token
+    @State private var webSyncing = false
 
     private var bannerPeopleSummary: String {
         let chosen = BannerSettings.people(from: bannerPeople)
@@ -119,6 +123,44 @@ struct SettingsView: View {
                 } message: {
                     Text("Turn on notifications for PerroNote in the iPhone Settings app, then try again.")
                 }
+
+                Section {
+                    Toggle("Sync notes to the web", isOn: $webSync)
+                    if webSync {
+                        TextField(WebSync.defaultRepo, text: $webRepo)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                        SecureField("GitHub token", text: $webToken)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .onChange(of: webToken) { value in
+                                Keychain.set(value.trimmingCharacters(in: .whitespacesAndNewlines), for: WebSync.tokenKey)
+                            }
+                        Button {
+                            webSyncing = true
+                            Task {
+                                await store.syncNow()
+                                webSyncing = false
+                            }
+                        } label: {
+                            if webSyncing { ProgressView() } else { Label("Sync now", systemImage: "arrow.triangle.2.circlepath") }
+                        }
+                        .disabled(webToken.isEmpty || webSyncing)
+                        if !store.syncStatus.isEmpty {
+                            Text(store.syncStatus)
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
+                        Link(destination: WebSync.siteURL) {
+                            Label("Open PerroNote on the web", systemImage: "safari")
+                        }
+                    }
+                } header: {
+                    Text("Web sync")
+                } footer: {
+                    Text("Sends each meeting's notes and your action items to a private GitHub repo, so you can read and edit them at ajhockey88.github.io/PerroNote-public. Edits made there come back to the app. Audio and transcripts stay on this phone. The token is kept in the iPhone Keychain.")
+                }
+                .onChange(of: webSync) { on in if on { store.scheduleSync(after: 0.5) } }
 
                 Section {
                     TextField("Morgan, Kubernetes, Q3 OKRs", text: $vocabulary, axis: .vertical)
@@ -273,7 +315,7 @@ struct SettingsView: View {
                 }
 
                 Section("Privacy") {
-                    Text("Audio stays on your iPhone. It is converted to text and split by voice on the device, and the voice models are downloaded once. Only the transcript text and the names you give are sent to Anthropic to write the notes.")
+                    Text("Audio stays on your iPhone. It is converted to text and split by voice on the device, and the voice models are downloaded once. Only the transcript text and the names you give are sent to Anthropic to write the notes. With Web sync on, the finished notes and action items are also copied to your private GitHub repo.")
                         .font(.footnote)
                 }
             }

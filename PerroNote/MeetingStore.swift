@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 
 @MainActor
 final class MeetingStore: ObservableObject {
@@ -101,6 +102,69 @@ final class MeetingStore: ObservableObject {
         let mine = allActionItems.filter { BannerSettings.matches($0, people: people, myName: myName) }
         DueAlerts.reschedule(mine)
         writeWidget(mine)
+        scheduleSync()
+    }
+
+    // MARK: Web sync
+
+    /// The last web sync result, shown in Settings > Web sync.
+    @Published private(set) var syncStatus = ""
+    private var syncTask: Task<Void, Never>?
+    private var syncing = false
+
+    /// Syncs a few seconds after the last change, so typing doesn't send a file per keystroke.
+    func scheduleSync(after seconds: Double = 4) {
+        guard WebSync.enabled else { return }
+        syncTask?.cancel()
+        syncTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+            if Task.isCancelled { return }
+            await self?.syncNow()
+        }
+    }
+
+    func syncNow() async {
+        guard WebSync.enabled, !syncing else { return }
+        syncing = true
+        defer { syncing = false }
+        do {
+            let result = try await WebSync.sync(self)
+            var parts = ["Synced " + Date().formatted(date: .omitted, time: .shortened)]
+            if result.sent > 0 { parts.append("\(result.sent) sent") }
+            if result.received > 0 { parts.append("\(result.received) brought in from the web") }
+            syncStatus = parts.joined(separator: " \u{00B7} ")
+        } catch {
+            syncStatus = error.localizedDescription
+        }
+    }
+
+    /// Finishes a sync after you leave the app, within the little time iOS allows.
+    func syncInBackground() {
+        guard WebSync.enabled else { return }
+        syncTask?.cancel()
+        var taskID = UIBackgroundTaskIdentifier.invalid
+        taskID = UIApplication.shared.beginBackgroundTask(withName: "web-sync") {
+            UIApplication.shared.endBackgroundTask(taskID)
+        }
+        Task {
+            await syncNow()
+            UIApplication.shared.endBackgroundTask(taskID)
+        }
+    }
+
+    /// Takes notes, title and tags edited on the web.
+    func applyWebEdit(_ record: WebSync.Record) {
+        update(record.id) { m in
+            if m.title != record.title { m.title = record.title; m.titleEdited = true }
+            m.tags = record.tags
+            if m.notes != record.notes { m.notes = record.notes; m.notesEdited = true }
+        }
+    }
+
+    /// Takes your own action items as edited on the web.
+    func replaceLooseItems(_ items: [ActionItem]) {
+        looseItems = items
+        saveLoose()
     }
 
     /// Hands the open items to the Home Screen and Lock Screen widgets, soonest due first.

@@ -1,0 +1,232 @@
+import CryptoKit
+import Foundation
+
+/// Copies each meeting's notes (never audio or transcripts) to a private GitHub repo, and brings back edits made on the web.
+/// Each meeting is one file, meetings/<id>.json; action items you added yourself are action-items.json.
+enum WebSync {
+    static let enabledKey = "web-sync"
+    static let repoKey = "web-sync-repo"
+    static let tokenKey = "web-sync-token"
+    private static let stateKey = "web-sync-state"
+    static let defaultRepo = "ajhockey88/perronote-data"
+    static let siteURL = URL(string: "https://ajhockey88.github.io/PerroNote-public/")!
+
+    static var enabled: Bool { UserDefaults.standard.bool(forKey: enabledKey) }
+    static var repo: String {
+        let r = (UserDefaults.standard.string(forKey: repoKey) ?? "").trimmingCharacters(in: .whitespaces)
+        return r.isEmpty ? defaultRepo : r
+    }
+    static var token: String { Keychain.get(tokenKey) ?? "" }
+
+    /// The part of a meeting that goes to the web.
+    struct Record: Codable {
+        var id: UUID
+        var title: String
+        var date: Date
+        var duration: TimeInterval
+        var tags: [String]?
+        var notes: MeetingNotes?
+        var updated: Date
+    }
+
+    /// What each file looked like at the last sync, on the phone and on GitHub, as git blob hashes.
+    private struct Seen: Codable { var local: String; var remote: String }
+
+    private static var state: [String: Seen] {
+        get {
+            guard let data = UserDefaults.standard.data(forKey: stateKey) else { return [:] }
+            return (try? JSONDecoder().decode([String: Seen].self, from: data)) ?? [:]
+        }
+        set { UserDefaults.standard.set(try? JSONEncoder().encode(newValue), forKey: stateKey) }
+    }
+
+    static func forget() { UserDefaults.standard.removeObject(forKey: stateKey) }
+
+    static let encoder: JSONEncoder = {
+        let e = JSONEncoder()
+        e.outputFormatting = [.sortedKeys, .prettyPrinted, .withoutEscapingSlashes]
+        e.dateEncodingStrategy = .iso8601
+        return e
+    }()
+
+    static let decoder: JSONDecoder = {
+        let d = JSONDecoder()
+        d.dateDecodingStrategy = .custom { decoder in
+            let text = try decoder.singleValueContainer().decode(String.self)
+            let f = ISO8601DateFormatter()
+            if let date = f.date(from: text) { return date }
+            f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            if let date = f.date(from: text) { return date }
+            throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Bad date \(text)"))
+        }
+        return d
+    }()
+
+    /// Git's hash for file contents, so the phone can tell whether a file on GitHub matches without downloading it.
+    static func blobSHA(_ data: Data) -> String {
+        var hasher = Insecure.SHA1()
+        hasher.update(data: Data("blob \(data.count)\0".utf8))
+        hasher.update(data: data)
+        return hasher.finalize().map { String(format: "%02x", $0) }.joined()
+    }
+
+    enum SyncError: LocalizedError {
+        case noToken, http(Int, String)
+        var errorDescription: String? {
+            switch self {
+            case .noToken: return "Add a GitHub token in Settings > Web sync."
+            case .http(401, _): return "GitHub didn't accept the token. Check it in Settings > Web sync."
+            case .http(403, _): return "The token can't write to that repo. Give it Contents: Read and write."
+            case .http(404, _): return "GitHub couldn't find that repo. Check its name and that the token can see it."
+            case .http(let code, let body): return "GitHub answered \(code). \(body.prefix(140))"
+            }
+        }
+    }
+
+    // MARK: GitHub
+
+    private static func request(_ method: String, _ path: String, body: [String: Any]? = nil) async throws -> (Data, Int) {
+        guard !token.isEmpty else { throw SyncError.noToken }
+        var req = URLRequest(url: URL(string: "https://api.github.com/repos/\(repo)\(path)")!)
+        req.httpMethod = method
+        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        req.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+        req.setValue("2022-11-28", forHTTPHeaderField: "X-GitHub-Api-Version")
+        req.cachePolicy = .reloadIgnoringLocalCacheData
+        if let body {
+            req.httpBody = try JSONSerialization.data(withJSONObject: body)
+            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        }
+        let (data, response) = try await URLSession.shared.data(for: req)
+        return (data, (response as? HTTPURLResponse)?.statusCode ?? 0)
+    }
+
+    private static func check(_ result: (Data, Int), allow: Set<Int> = []) throws -> Data {
+        let (data, code) = result
+        guard (200..<300).contains(code) || allow.contains(code) else {
+            let message = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["message"] as? String
+            throw SyncError.http(code, message ?? "")
+        }
+        return data
+    }
+
+    /// Every file on GitHub and its blob hash. Empty for a brand new repo.
+    private static func remoteFiles() async throws -> (branch: String?, files: [String: String]) {
+        let info = try check(await request("GET", ""))
+        let branch = (try? JSONSerialization.jsonObject(with: info) as? [String: Any])?["default_branch"] as? String
+        let result = try await request("GET", "/git/trees/\(branch ?? "main")?recursive=1")
+        if result.1 == 404 || result.1 == 409 { return (branch, [:]) }
+        let data = try check(result)
+        let tree = (try JSONSerialization.jsonObject(with: data) as? [String: Any])?["tree"] as? [[String: Any]] ?? []
+        var files: [String: String] = [:]
+        for entry in tree where entry["type"] as? String == "blob" {
+            if let path = entry["path"] as? String, let sha = entry["sha"] as? String { files[path] = sha }
+        }
+        return (branch, files)
+    }
+
+    private static func download(_ sha: String) async throws -> Data {
+        let data = try check(await request("GET", "/git/blobs/\(sha)"))
+        let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        let content = (json?["content"] as? String ?? "").replacingOccurrences(of: "\n", with: "")
+        return Data(base64Encoded: content) ?? Data()
+    }
+
+    /// Writes a file and returns its new blob hash.
+    private static func upload(_ path: String, _ data: Data, replacing sha: String?, branch: String?, message: String) async throws -> String {
+        var body: [String: Any] = ["message": message, "content": data.base64EncodedString()]
+        if let sha { body["sha"] = sha }
+        if let branch { body["branch"] = branch }
+        let result = try check(await request("PUT", "/contents/\(path)", body: body))
+        let json = try JSONSerialization.jsonObject(with: result) as? [String: Any]
+        return (json?["content"] as? [String: Any])?["sha"] as? String ?? blobSHA(data)
+    }
+
+    private static func remove(_ path: String, sha: String, branch: String?) async throws {
+        var body: [String: Any] = ["message": "Remove \(path)", "sha": sha]
+        if let branch { body["branch"] = branch }
+        _ = try check(await request("DELETE", "/contents/\(path)", body: body), allow: [404])
+    }
+
+    // MARK: Sync
+
+    struct Outcome { var sent = 0; var received = 0 }
+
+    /// One round: files changed on the phone go up, files changed on the web come down.
+    /// When both changed since the last round, the phone's version wins.
+    @MainActor
+    static func sync(_ store: MeetingStore) async throws -> Outcome {
+        var outcome = Outcome()
+        let (branch, remote) = try await remoteFiles()
+        var seen = state
+        defer { state = seen }
+
+        // Local files as they would be written now.
+        var local: [String: Data] = [:]
+        for m in store.meetings where !m.isBusy {
+            let record = Record(id: m.id, title: m.title, date: m.date, duration: m.duration,
+                                tags: m.tags, notes: m.notes, updated: Date(timeIntervalSince1970: 0))
+            local["meetings/\(m.id.uuidString).json"] = try encoder.encode(record)
+        }
+        local["action-items.json"] = try encoder.encode(store.looseItems)
+
+        for (path, data) in local {
+            let localSHA = blobSHA(data)
+            let remoteSHA = remote[path]
+            let last = seen[path]
+            let upload: Bool
+            if let last, remoteSHA != nil {
+                if last.local != localSHA { upload = true }          // edited on the phone
+                else if last.remote != remoteSHA { upload = false }  // edited on the web
+                else { continue }                                    // nothing new
+            } else {
+                upload = true                                        // new, or first round for this file
+            }
+
+            if upload {
+                var body = data
+                if path.hasPrefix("meetings/"), var record = try? decoder.decode(Record.self, from: data) {
+                    record.updated = Date()
+                    body = try encoder.encode(record)
+                }
+                let newRemote = try await Self.upload(path, body, replacing: remoteSHA, branch: branch,
+                                                      message: "Update \(path)")
+                seen[path] = Seen(local: localSHA, remote: newRemote)
+                outcome.sent += 1
+            } else if let remoteSHA {
+                // Edited on the web: bring it into the app.
+                let incoming = try await download(remoteSHA)
+                if path == "action-items.json" {
+                    let items = try decoder.decode([ActionItem].self, from: incoming)
+                    store.replaceLooseItems(items)
+                } else {
+                    let record = try decoder.decode(Record.self, from: incoming)
+                    store.applyWebEdit(record)
+                }
+                let refreshed = localData(for: path, store: store) ?? data
+                seen[path] = Seen(local: blobSHA(refreshed), remote: remoteSHA)
+                outcome.received += 1
+            }
+        }
+
+        // Meetings deleted on the phone come off the web too.
+        for (path, sha) in remote where path.hasPrefix("meetings/") && local[path] == nil {
+            guard seen[path] != nil else { continue }
+            let id = path.dropFirst("meetings/".count).dropLast(".json".count)
+            if let uuid = UUID(uuidString: String(id)), store.meeting(uuid)?.isBusy == true { continue }
+            try await remove(path, sha: sha, branch: branch)
+            seen[path] = nil
+        }
+        return outcome
+    }
+
+    @MainActor
+    private static func localData(for path: String, store: MeetingStore) -> Data? {
+        if path == "action-items.json" { return try? encoder.encode(store.looseItems) }
+        let id = path.dropFirst("meetings/".count).dropLast(".json".count)
+        guard let uuid = UUID(uuidString: String(id)), let m = store.meeting(uuid) else { return nil }
+        let record = Record(id: m.id, title: m.title, date: m.date, duration: m.duration,
+                            tags: m.tags, notes: m.notes, updated: Date(timeIntervalSince1970: 0))
+        return try? encoder.encode(record)
+    }
+}

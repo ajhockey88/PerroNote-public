@@ -32,7 +32,9 @@ struct PerroNoteApp: App {
                 .environmentObject(people)
                 .preferredColorScheme(AppAppearance(rawValue: appearance)?.scheme)
                 .onChange(of: scenePhase) { phase in
-                    if phase != .active { store.flush() } else { store.applyWidgetTicks(); store.refreshAlerts() }
+                    if phase == .background { store.flush(); store.syncInBackground() }
+                    else if phase != .active { store.flush() }
+                    else { store.applyWidgetTicks(); store.refreshAlerts(); store.scheduleSync(after: 0.5) }
                 }
                 .onOpenURL { RecordRequest.shared.open($0) }
                 .onAppear {

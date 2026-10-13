@@ -3,6 +3,9 @@ name: Build
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - 'web/**'
+      - '.github/workflows/pages.yml'
   workflow_dispatch:
 
 concurrency:
