@@ -5,8 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="referrer" content="no-referrer">
 <title>PerroNote</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23FF7A45'/%3E%3Cpath d='M20 50V14h14a11 11 0 0 1 0 22h-6' fill='none' stroke='white' stroke-width='7' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="icon" type="image/png" href="favicon.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 <style>
+@font-face {
+  font-family: "Permanent Marker";
+  src: url("PermanentMarker-Regular.ttf") format("truetype");
+  font-display: swap;
+}
 :root {
   --bg: #f6f5f3;
   --surface: #ffffff;
@@ -71,10 +77,10 @@ header.top {
   display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
 }
 .wordmark {
-  font-weight: 750; font-size: 19px; letter-spacing: -0.02em; text-decoration: none;
+  font-family: "Permanent Marker", cursive; font-weight: 400; font-size: 22px; letter-spacing: 0; text-decoration: none;
   display: flex; align-items: center; gap: 8px;
 }
-.wordmark .dot { width: 22px; height: 22px; border-radius: 7px; background: var(--accent); display: inline-grid; place-items: center; color: #fff; font-size: 13px; font-weight: 800; }
+.wordmark .logo { width: 30px; height: 30px; border-radius: 7px; display: block; }
 .wordmark .note { color: var(--accent); }
 .tabs { display: flex; gap: 4px; background: var(--surface-2); padding: 3px; border-radius: 10px; }
 .tab {
@@ -96,7 +102,7 @@ header.top {
 }
 
 main { max-width: 860px; margin: 0 auto; padding: 20px 16px 80px; }
-h1 { font-size: 26px; letter-spacing: -0.02em; margin: 4px 0 16px; }
+h1 { font-family: "Permanent Marker", cursive; font-weight: 400; font-size: 30px; letter-spacing: 0; margin: 4px 0 16px; }
 h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 0 0 10px; font-weight: 650; }
 .muted { color: var(--muted); }
 .small { font-size: 13px; }
@@ -145,7 +151,7 @@ label.field > span { display: block; font-size: 13px; font-weight: 600; margin-b
 .list { display: flex; flex-direction: column; gap: 10px; }
 .meeting-card { display: block; padding: 14px 16px; text-decoration: none; transition: border-color 0.15s; }
 .meeting-card:hover { border-color: var(--accent); }
-.meeting-card .title { font-weight: 650; font-size: 16px; margin-bottom: 3px; overflow-wrap: anywhere; }
+.meeting-card .title { font-family: "Permanent Marker", cursive; font-weight: 400; font-size: 19px; margin-bottom: 3px; overflow-wrap: anywhere; }
 .meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; font-size: 13px; color: var(--muted); }
 .open-count { color: var(--accent-strong); font-weight: 600; }
 @media (prefers-color-scheme: dark) { .open-count { color: var(--accent); } }
@@ -160,6 +166,7 @@ label.field > span { display: block; font-size: 13px; font-weight: 600; margin-b
 .toolbar .status { margin-left: auto; font-size: 13px; color: var(--muted); }
 .toolbar .status.dirty { color: var(--accent-strong); font-weight: 600; }
 .title-input {
+  font-family: "Permanent Marker", cursive !important; font-weight: 400 !important;
   font-size: 24px !important; font-weight: 700; letter-spacing: -0.02em; border: 1px solid transparent !important; background: transparent !important; padding: 4px 8px !important; margin-left: -8px; width: calc(100% + 16px) !important;
 }
 .title-input:hover { border-color: var(--border) !important; }
@@ -247,7 +254,7 @@ label.field > span { display: block; font-size: 13px; font-weight: 600; margin-b
 <body>
 <header class="top">
   <div class="top-inner">
-    <a class="wordmark" href="#/"><span class="dot">P</span><span>Perro<span class="note">Note</span></span></a>
+    <a class="wordmark" href="#/"><img class="logo" src="icon.png" alt="" width="30" height="30"><span>Perro<span class="note">Note</span></span></a>
     <nav class="tabs" id="tabs">
       <a class="tab" href="#/" data-tab="meetings">Meetings</a>
       <a class="tab" href="#/actions" data-tab="actions">Action items</a>
