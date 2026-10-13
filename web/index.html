@@ -151,7 +151,7 @@ label.field > span { display: block; font-size: 13px; font-weight: 600; margin-b
 .list { display: flex; flex-direction: column; gap: 10px; }
 .meeting-card { display: block; padding: 14px 16px; text-decoration: none; transition: border-color 0.15s; }
 .meeting-card:hover { border-color: var(--accent); }
-.meeting-card .title { font-family: "Permanent Marker", cursive; font-weight: 400; font-size: 19px; margin-bottom: 3px; overflow-wrap: anywhere; }
+.meeting-card .title { font-weight: 650; font-size: 16px; margin-bottom: 3px; overflow-wrap: anywhere; }
 .meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; font-size: 13px; color: var(--muted); }
 .open-count { color: var(--accent-strong); font-weight: 600; }
 @media (prefers-color-scheme: dark) { .open-count { color: var(--accent); } }
@@ -166,7 +166,6 @@ label.field > span { display: block; font-size: 13px; font-weight: 600; margin-b
 .toolbar .status { margin-left: auto; font-size: 13px; color: var(--muted); }
 .toolbar .status.dirty { color: var(--accent-strong); font-weight: 600; }
 .title-input {
-  font-family: "Permanent Marker", cursive !important; font-weight: 400 !important;
   font-size: 24px !important; font-weight: 700; letter-spacing: -0.02em; border: 1px solid transparent !important; background: transparent !important; padding: 4px 8px !important; margin-left: -8px; width: calc(100% + 16px) !important;
 }
 .title-input:hover { border-color: var(--border) !important; }
@@ -759,12 +758,12 @@ if (typeof module !== "undefined" && module.exports) {
   // ----- Settings -----
   function renderSettings() {
     var repoIn = el("input", { type: "text", value: cfg.repo || DEFAULT_REPO, placeholder: DEFAULT_REPO, autocomplete: "off", autocapitalize: "off", spellcheck: "false" });
-    var tokIn = el("input", { type: "password", value: "", placeholder: cfg.token ? "Saved — leave blank to keep" : "github_pat_…", autocomplete: "off", autocapitalize: "off", spellcheck: "false" });
+    var tokIn = el("input", { type: "password", value: "", placeholder: cfg.token ? "Saved — leave blank to keep" : "github_pat_…", autocomplete: "new-password", name: "perronote-github-token", autocapitalize: "off", spellcheck: "false" });
     var err = el("p", { class: "small", style: "color:var(--red);margin:0 0 12px", text: "" });
     function save(ev) {
       ev.preventDefault();
       var repo = repoIn.value.trim().replace(/^https?:\/\/github\.com\//i, "").replace(/\.git$/, "").replace(/\/+$/, "");
-      var token = tokIn.value.trim() || cfg.token;
+      var token = tokIn.value.replace(/\s+/g, "") || cfg.token;
       if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo)) { err.textContent = "Enter the repo as owner/name."; return; }
       if (!token) { err.textContent = "Paste a GitHub token."; return; }
       var changed = repo !== cfg.repo || token !== cfg.token;
