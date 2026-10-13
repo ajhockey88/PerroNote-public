@@ -2098,23 +2098,57 @@ if (typeof module !== "undefined" && module.exports) {
   }
 
   var GROUP_LABEL = { overdue: "Overdue", today: "Today", tomorrow: "Tomorrow", later: "Later", none: "No date", done: "Done" };
+  /** Grouped, tickable action item rows; `rerender` redraws the current view after a tick. */
+  function actionGroups(rows, rerender) {
+    var today = new Date();
+    return groupItems(rows, today).map(function (g) {
+      return el("div", { class: "group " + g.key },
+        el("h2", null, GROUP_LABEL[g.key], el("span", { class: "count", text: String(g.rows.length) })),
+        el("div", { class: "card rows" }, g.rows.map(function (r) {
+          var dg = dueGroup({ due: r.item.due }, today);
+          var row = el("div", { class: "arow" + (r.item.done ? " done" : "") });
+          var cb = el("input", { type: "checkbox", class: "check", checked: !!r.item.done, "aria-label": "Done" });
+          cb.addEventListener("change", async function () {
+            var hash = location.hash;
+            cb.disabled = true;
+            row.classList.toggle("done", cb.checked);
+            var ok = await toggleItem(r.path, r.item.id, cb.checked);
+            if (location.hash === hash) { var y = window.scrollY; rerender(); window.scrollTo(0, y); }
+            if (!ok) { cb.checked = !cb.checked; cb.disabled = false; }
+          });
+          row.append(cb, el("div", { class: "body" },
+            el("div", { class: "task", text: r.item.task || "(no task)" }),
+            el("div", { class: "meta" },
+              r.item.owner ? el("span", { text: r.item.owner }) : null,
+              r.item.due ? el("span", { class: "due " + dg, text: r.item.due }) : null,
+              r.meetingTitle ? el("a", { href: "#/meeting/" + encodeURIComponent(r.meetingId), text: r.meetingTitle }) : el("span", { text: "Added by you" }))));
+          return row;
+        })));
+    });
+  }
+
   function renderActions() {
     var rows = allRows();
+    var name = myName();
     var owners = {};
     rows.forEach(function (r) { splitOwners(r.item.owner).forEach(function (o) { owners[o.toLowerCase()] = owners[o.toLowerCase()] || o; }); });
     var ownerList = Object.keys(owners).map(function (k) { return owners[k]; }).sort(function (a, b) { return a.localeCompare(b); });
-    if (state.owner && !owners[state.owner.toLowerCase()]) state.owner = "";
+    if (state.owner && state.owner !== ME && !owners[state.owner.toLowerCase()]) state.owner = "";
 
     var sel = el("select", { "aria-label": "Owner" }, el("option", { value: "", text: "Everyone" }),
+      el("option", { value: ME, text: "Assigned to me" + (name ? "" : " (“Me”)") }),
       ownerList.map(function (o) { return el("option", { value: o, text: o }); }));
     sel.value = state.owner;
-    sel.addEventListener("change", function () { state.owner = sel.value; renderActions(); });
+    sel.addEventListener("change", function () { state.owner = sel.value; lsSet(KEY_OWNER, sel.value); renderActions(); });
     var doneT = el("input", { type: "checkbox", checked: state.showDone });
     doneT.addEventListener("change", function () { state.showDone = doneT.checked; lsSet(KEY_SHOWDONE, doneT.checked ? "1" : "0"); renderActions(); });
     var addBtn = el("button", { class: "btn primary", type: "button", text: "+ Add", onclick: function () { state.adding = !state.adding; renderActions(); } });
 
-    var nodes = [el("h1", { text: "Action items" }),
+    var nodes = [el("h1", { text: "Action items" }), summaryStrip(),
       el("div", { class: "filters" }, sel, el("label", { class: "switch" }, doneT, "Show done"), addBtn)];
+    if (state.owner === ME && !name) {
+      nodes.push(el("p", { class: "small muted", style: "margin:-6px 0 14px" }, "Showing items owned by “Me”. ", el("a", { href: "#/settings", text: "Add your name in Settings" }), " to include ones with your name."));
+    }
 
     if (state.adding) {
       var taskIn = el("input", { type: "text", class: "task-in", placeholder: "What needs doing?", "aria-label": "Task" });
@@ -2137,40 +2171,160 @@ if (typeof module !== "undefined" && module.exports) {
 
     var filtered = rows.filter(function (r) {
       if (!state.showDone && r.item.done) return false;
+      if (state.owner === ME) return isMine(r.item.owner, name);
       if (state.owner) {
         var want = state.owner.toLowerCase();
         if (!splitOwners(r.item.owner).some(function (o) { return o.toLowerCase() === want; })) return false;
       }
       return true;
     });
-    var today = new Date();
-    var groups = groupItems(filtered, today);
+    var groups = actionGroups(filtered, renderActions);
     if (!groups.length) {
       nodes.push(el("div", { class: "card notice" }, el("p", { class: "muted", text: rows.length ? "Nothing to do here." : "No action items yet." })));
     }
-    groups.forEach(function (g) {
-      nodes.push(el("div", { class: "group " + g.key },
-        el("h2", null, GROUP_LABEL[g.key], el("span", { class: "count", text: String(g.rows.length) })),
-        el("div", { class: "card rows" }, g.rows.map(function (r) {
-          var dg = dueGroup({ due: r.item.due }, today);
-          var row = el("div", { class: "arow" + (r.item.done ? " done" : "") });
-          var cb = el("input", { type: "checkbox", class: "check", checked: !!r.item.done, "aria-label": "Done" });
-          cb.addEventListener("change", async function () {
-            cb.disabled = true;
-            row.classList.toggle("done", cb.checked);
-            var ok = await toggleItem(r.path, r.item.id, cb.checked);
-            if (route().name === "actions") renderActions();
-            if (!ok) { cb.checked = !cb.checked; cb.disabled = false; }
-          });
-          row.append(cb, el("div", { class: "body" },
-            el("div", { class: "task", text: r.item.task || "(no task)" }),
+    nodes.push(groups);
+    mount(nodes);
+  }
+
+  // ----- People -----
+  function peopleList() { return buildPeople(meetings().map(function (m) { return m.data; }), looseItems(), myName()); }
+  function renderPeople() {
+    var people = peopleList();
+    var search = el("input", { type: "search", placeholder: "Search people…", value: state.peopleSearch, "aria-label": "Search people" });
+    var listEl = el("div");
+    function fill() {
+      listEl.replaceChildren();
+      var q = state.peopleSearch.trim().toLowerCase();
+      var shown = people.filter(function (p) { return !q || p.key.indexOf(q) >= 0; });
+      if (!shown.length) {
+        listEl.append(el("div", { class: "card notice" }, el("p", { class: "muted", text: people.length ? "No one matches." : "No attendees or owners in your notes yet." })));
+        return;
+      }
+      listEl.append(el("div", { class: "card rows" }, shown.map(function (p) {
+        return el("a", { class: "lrow", href: "#/person/" + encodeURIComponent(p.name) },
+          el("div", { class: "body" },
+            el("div", { class: "name", text: p.name }),
             el("div", { class: "meta" },
-              r.item.owner ? el("span", { text: r.item.owner }) : null,
-              r.item.due ? el("span", { class: "due " + dg, text: r.item.due }) : null,
-              r.meetingTitle ? el("a", { href: "#/meeting/" + encodeURIComponent(r.meetingId), text: r.meetingTitle }) : el("span", { text: "Added by you" }))));
-          return row;
-        }))));
+              el("span", { text: plural(p.meetings, "meeting") }),
+              p.open ? el("span", { class: "open-count", text: p.open + " open" }) : el("span", { text: "No open items" }))),
+          el("span", { class: "muted", "aria-hidden": "true", text: "›" }));
+      })));
+    }
+    search.addEventListener("input", function () { state.peopleSearch = search.value; fill(); });
+    fill();
+    var hadFocus = document.activeElement && document.activeElement.type === "search";
+    mount([el("h1", { text: "People" }), el("div", { class: "search-row" }, search), listEl]);
+    if (hadFocus) search.focus();
+  }
+
+  function renderPerson(rawName) {
+    var name = myName();
+    var key = canonPerson(rawName, name).toLowerCase();
+    var person = peopleList().find(function (p) { return p.key === key; });
+    var display = person ? person.name : canonPerson(rawName, name);
+    var open = allRows().filter(function (r) { return !r.item.done && personOwns(r.item.owner, key, name); });
+    var mts = meetings().filter(function (m) { return personInMeeting(m.data, key, name); });
+    var nodes = [
+      el("div", { class: "toolbar" }, el("a", { class: "btn ghost", href: "#/people", text: "← People" })),
+      el("h1", { text: display }),
+      el("p", { class: "muted", style: "margin:-8px 0 16px" }, plural(mts.length, "meeting") + " · " + open.length + " open action item" + (open.length === 1 ? "" : "s"),
+        key === name.toLowerCase() && name ? " · that’s you" : null)
+    ];
+    var groups = actionGroups(open, function () { renderPerson(rawName); });
+    nodes.push(el("h2", { style: "margin-top:4px", text: "Open action items" }));
+    if (groups.length) nodes.push(groups);
+    else nodes.push(el("div", { class: "card notice", style: "margin-bottom:18px" }, el("p", { class: "muted", text: "Nothing open." })));
+    nodes.push(el("h2", { text: "Meetings" }));
+    nodes.push(mts.length ? el("div", { class: "list" }, mts.map(meetingCard))
+      : el("div", { class: "card notice" }, el("p", { class: "muted", text: "No meetings with " + display + "." })));
+    mount(nodes);
+  }
+
+  // ----- Dates & risks -----
+  function renderDates() {
+    var today = new Date();
+    var entries = [], risks = [];
+    meetings().forEach(function (m) {
+      var n = notesOf(m.data);
+      if (!n) return;
+      var base = { meetingTime: meetingTime(m.data), title: m.data.title || "Untitled meeting", id: meetingIdOf(m) };
+      strList(n.keyDates).forEach(function (t) { entries.push(Object.assign({ text: t, date: parseKeyDate(t) }, base)); });
+      strList(n.risks).forEach(function (t) { risks.push(Object.assign({ text: t }, base)); });
     });
+    var g = sortKeyDates(entries, today);
+    function meetingLink(e) { return el("a", { href: "#/meeting/" + encodeURIComponent(e.id), text: e.title }); }
+    function whenText(e) {
+      var diff = dayDiff(e.date, today);
+      var rel = diff === 0 ? "Today" : diff === 1 ? "Tomorrow" : diff > 1 ? "in " + diff + " days" : diff === -1 ? "Yesterday" : -diff + " days ago";
+      return el("span", { class: "when" + (diff === 0 ? " today" : diff > 0 && diff <= 7 ? " soon" : ""), text: formatDue(e.date) + " · " + rel });
+    }
+    function rowsCard(list, withDate) {
+      return el("div", { class: "card rows" }, list.map(function (e) {
+        return el("div", { class: "lrow" }, el("div", { class: "body" },
+          el("div", { class: "text", text: e.text }),
+          el("div", { class: "meta" }, withDate && e.date ? whenText(e) : null, meetingLink(e))));
+      }));
+    }
+    var nodes = [el("h1", { text: "Dates & risks" }), el("h2", { text: "Key dates" })];
+    if (!entries.length) nodes.push(el("div", { class: "card notice", style: "margin-bottom:18px" }, el("p", { class: "muted", text: "No key dates in your notes yet." })));
+    else {
+      nodes.push(g.upcoming.length ? rowsCard(g.upcoming, true) : el("div", { class: "card notice" }, el("p", { class: "muted", text: "No upcoming dates." })));
+      if (g.past.length) nodes.push(el("details", { class: "fold" }, el("summary", { text: "Past (" + g.past.length + ")" }), rowsCard(g.past, true)));
+      if (g.undated.length) nodes.push(el("details", { class: "fold" }, el("summary", { text: "No date (" + g.undated.length + ")" }), rowsCard(g.undated, false)));
+      if (!g.past.length && !g.undated.length) nodes.push(el("div", { style: "height:18px" }));
+    }
+    nodes.push(el("h2", { style: "margin-top:8px", text: "Risks and blockers" }));
+    nodes.push(risks.length ? rowsCard(risks, false) : el("div", { class: "card notice" }, el("p", { class: "muted", text: "No risks or blockers in your notes." })));
+    mount(nodes);
+  }
+
+  // ----- Manage tags -----
+  function renderTags() {
+    var all = meetings();
+    var counts = tagCountsOf(all);
+    var tags = Object.keys(counts).sort(function (a, b) { return a.localeCompare(b); });
+    var busy = !!state.bulk;
+    function pathsWith(tag) { return all.filter(function (m) { return Array.isArray(m.data.tags) && m.data.tags.indexOf(tag) >= 0; }).map(function (m) { return m.path; }); }
+    function rename(from) {
+      var to = prompt("Rename “" + from + "” to:", from);
+      if (to == null) return;
+      to = to.trim().replace(/\s+/g, " ").replace(/,/g, " ").trim();
+      if (!to || to === from) return;
+      var existing = tags.find(function (t) { return t !== from && t.toLowerCase() === to.toLowerCase(); });
+      if (existing) {
+        if (!confirm("“" + existing + "” already exists. Merge “" + from + "” into it? " + plural(counts[from], "meeting") + " will be updated.")) return;
+        to = existing;
+      }
+      if (state.tag === from) state.tag = null;
+      runBulk(pathsWith(from), function (obj) {
+        var next = renameTagInList(obj.tags, from, to);
+        if (!next) return false;
+        obj.tags = next; return true;
+      }, function (k) { return (existing ? "Merged “" + from + "” into “" + to + "” in " : "Renamed “" + from + "” to “" + to + "” in ") + plural(k, "meeting") + "."; });
+    }
+    function del(tag) {
+      if (!confirm("Remove the tag “" + tag + "” from " + plural(counts[tag], "meeting") + "?")) return;
+      if (state.tag === tag) state.tag = null;
+      runBulk(pathsWith(tag), function (obj) {
+        var next = removeTagFromList(obj.tags, tag);
+        if (!next) return false;
+        obj.tags = next; return true;
+      }, function (k) { return "Removed “" + tag + "” from " + plural(k, "meeting") + "."; });
+    }
+    var nodes = [
+      el("div", { class: "toolbar" }, el("a", { class: "btn ghost", href: "#/", text: "← Meetings" })),
+      el("h1", { text: "Manage tags" }),
+      bulkNodes()
+    ];
+    if (!tags.length) nodes.push(el("div", { class: "card notice" }, el("p", { class: "muted", text: "No tags yet. Add them on a meeting, or use Select on the Meetings list." })));
+    else nodes.push(el("div", { class: "card rows" }, tags.map(function (t) {
+      return el("div", { class: "lrow" },
+        el("div", { class: "body" }, el("span", { class: "tag", text: t }), el("div", { class: "meta", style: "margin-top:4px", text: plural(counts[t], "meeting") })),
+        el("div", { class: "acts" },
+          el("button", { class: "btn", type: "button", text: "Rename", disabled: busy, onclick: function () { rename(t); } }),
+          el("button", { class: "btn danger", type: "button", text: "Delete", disabled: busy, onclick: function () { del(t); } })));
+    })));
+    nodes.push(el("p", { class: "small muted", style: "margin-top:12px", text: "Renaming to an existing tag merges them. Each change saves every affected meeting, one at a time." }));
     mount(nodes);
   }
 
