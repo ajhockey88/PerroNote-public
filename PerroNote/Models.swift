@@ -270,6 +270,8 @@ struct Meeting: Codable, Identifiable, Hashable {
     var usage: [TokenUsage]?
     /// Labels such as a project or client. A meeting can be in several, like folders that overlap.
     var tags: [String]?
+    /// The notes template picked by hand: a template's name, "" for standard notes, nil to pick by the template rules.
+    var noteTemplate: String?
 
     /// Whether this person was in the meeting: listed, named for a voice, or named by the notes.
     func includes(_ person: String) -> Bool {

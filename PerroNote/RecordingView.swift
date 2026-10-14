@@ -8,6 +8,8 @@ struct RecordingView: View {
     @State private var errorText: String?
     @State private var started = false
     @State private var title = RecordingView.defaultTitle()
+    /// The notes template for this recording: nil picks by the template rules, "" is standard notes.
+    @State private var notesPick: String?
 
     /// The name the meeting gets until the notes give it a better one.
     static func defaultTitle() -> String {
@@ -40,6 +42,20 @@ struct RecordingView: View {
                 Text(errorText).foregroundStyle(.red).font(.footnote)
                     .multilineTextAlignment(.center).padding(.horizontal, 32)
             }
+
+            Menu {
+                Picker("Notes", selection: $notesPick) {
+                    Text("Automatic").tag(String?.none)
+                    Text("Standard notes").tag(String?.some(""))
+                    ForEach(NoteTemplates.all) { t in Text(t.name).tag(String?.some(t.name)) }
+                }
+            } label: {
+                Label(notesLabel, systemImage: "rectangle.3.group")
+                    .font(.subheadline)
+                    .padding(.horizontal, 12).padding(.vertical, 6)
+                    .background(.thinMaterial, in: Capsule())
+            }
+            .padding(.top, 4)
             Spacer()
 
             HStack(spacing: 24) {
@@ -81,6 +97,14 @@ struct RecordingView: View {
         .interactiveDismissDisabled()
     }
 
+    private var notesLabel: String {
+        switch notesPick {
+        case nil: return "Notes: Automatic"
+        case "": return "Notes: Standard"
+        case let name?: return "Notes: " + name
+        }
+    }
+
     private var statusText: String {
         if recorder.isPaused { return "paused" }
         return recorder.isRecording ? "recording..." : "starting..."
@@ -91,6 +115,7 @@ struct RecordingView: View {
         guard let result = recorder.stop() else { dismiss(); return }
         let id = store.add(fileName: result.fileName, duration: result.duration,
                            date: result.startedAt.roundedToQuarterHour())
+        if let notesPick { store.update(id) { $0.noteTemplate = notesPick } }
         dismiss()
         Task { await store.process(id) }
     }

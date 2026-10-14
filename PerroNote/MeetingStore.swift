@@ -300,6 +300,7 @@ final class MeetingStore: ObservableObject {
             }
         }
 
+        if let template { update(id) { $0.noteTemplate = template.name } } else if standardNotes { update(id) { $0.noteTemplate = "" } }
         guard let current = meeting(id) else { return }
         update(id) { $0.status = .generating; $0.errorMessage = nil }
         do {
@@ -308,7 +309,7 @@ final class MeetingStore: ObservableObject {
                 meetingDate: current.date,
                 attendees: current.attendeeNames ?? [],
                 voicesIdentified: current.hasVoices && (current.speakersConfirmed ?? false),
-                template: standardNotes ? nil : (template ?? NoteTemplates.match(date: current.date, tags: current.tags)))
+                template: NoteTemplates.chosen(current.noteTemplate, date: current.date, tags: current.tags))
             update(id) {
                 var notes = result.notes
                 let hadNotes = $0.usage?.contains { $0.kind == .draft || $0.kind == .redraft } ?? false

@@ -31,6 +31,48 @@ struct NoteTemplate: Codable, Identifiable, Hashable {
         questions that were actually stated.
         """)
 
+    static let processWalkthrough = NoteTemplate(
+        name: "Process walkthrough",
+        tag: "Process",
+        useTime: false,
+        instructions: """
+        This is a process walkthrough: someone is explaining, step by step, how they do a process that is not \
+        written down yet, so it can be turned into an SOP or work instruction. Capture the whole process in the order \
+        the work happens. Completeness and exact detail matter more than keeping the notes short, so keep every step, \
+        check, exception and tip that was said, using the exact names of systems, screens, menus, fields, buttons, \
+        reports, files, folders and teams.
+        Use these topics, in this order, and leave out any that nothing was said about:
+        1. "Purpose and scope": what the process achieves, where it starts and ends, and what is in or out of scope.
+        2. "Trigger and timing": what starts it, how often it runs, deadlines, cut-off times and how long it takes.
+        3. "Roles": who does what, by name and role or team: the owner, the people who do the work, approvers, and \
+        who receives handoffs.
+        4. "Systems, tools and inputs": every system, application, report, file, form, template, access or permission \
+        needed, and the information or documents needed before starting.
+        5. The procedure: one or more topics titled "Steps: " plus the phase (for example "Steps: Intake" or \
+        "Steps: Review and approval"), in the order the work is done. Each point is one step written as an \
+        instruction that starts with a verb, numbered across all phases ("Step 1: Open the vendor record in SAP", \
+        "Step 2: ..."). Put the specifics in the step's sub-points, as many as the step needs: where to click or go, \
+        fields and the values to enter, what to check, who does it when it is someone else, and what the result \
+        should be.
+        6. "Decision points and exceptions": each branch as "If ..., then ...", plus exceptions, edge cases, \
+        workarounds, what to do when something goes wrong, and who to escalate to.
+        7. "Outputs and handoffs": what the process produces, where it is saved or sent, who gets it, and how you \
+        know it is finished.
+        8. "Controls and records": approvals, reviews, reconciliations, audit or compliance requirements, and the \
+        records that must be kept.
+        9. "Tips and common mistakes": pitfalls, workarounds and know-how the person shared.
+        10. "Pain points and ideas": manual work, delays, single points of failure, and improvement ideas raised.
+        Title: the process name followed by "process", for example "Vendor onboarding process". Summary: two to four \
+        sentences naming the process, its purpose, who does it, how often, and where it starts and ends. Open \
+        questions: every gap an SOP writer would still need filled, such as a step that was skipped over or unclear, \
+        an unknown owner, a missing system name, the order of steps being uncertain, or a screenshot or example still \
+        needed. Action items: follow-ups promised, such as sending templates, example files, screenshots or access. \
+        Risks: risks to the process itself. Only list decisions that were actually made. Never invent steps; if the \
+        order was unclear, keep the order described and say so under open questions.
+        """)
+
+    static let builtIns: [NoteTemplate] = [.standUp, .processWalkthrough]
+
     private static func squash(_ s: String) -> String { s.lowercased().filter { $0.isLetter || $0.isNumber } }
 
     func matches(date: Date, tags: [String]?) -> Bool {
@@ -52,8 +94,10 @@ enum NoteTemplates {
     static var all: [NoteTemplate] {
         get {
             guard let data = UserDefaults.standard.data(forKey: key),
-                  let list = try? JSONDecoder().decode([NoteTemplate].self, from: data) else { return [.standUp] }
-            return list
+                  let list = try? JSONDecoder().decode([NoteTemplate].self, from: data) else { return NoteTemplate.builtIns }
+            // Templates added in later versions join the ones you already have.
+            let missing = NoteTemplate.builtIns.filter { b in !list.contains { $0.name == b.name } }
+            return list + missing
         }
         set { UserDefaults.standard.set(try? JSONEncoder().encode(newValue), forKey: key) }
     }
@@ -61,6 +105,13 @@ enum NoteTemplates {
     /// The first template whose rules fit this meeting, or nil for the usual notes.
     static func match(date: Date, tags: [String]?) -> NoteTemplate? {
         all.first { $0.matches(date: date, tags: tags) }
+    }
+
+    /// The template saved on a meeting: "" means standard notes were picked, nil means pick by the rules.
+    static func chosen(_ name: String?, date: Date, tags: [String]?) -> NoteTemplate? {
+        guard let name else { return match(date: date, tags: tags) }
+        if name.isEmpty { return nil }
+        return all.first { $0.name == name } ?? match(date: date, tags: tags)
     }
 }
 

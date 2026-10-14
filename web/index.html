@@ -458,6 +458,7 @@ body.desk .sidebar {
 .side-tag .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
 .side-tag .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .side-tag .n { margin-left: auto; color: var(--side-muted); font-size: 13px; }
+.excel-chip { display: block; width: 100%; margin-top: 10px; border: 1px solid color-mix(in srgb, var(--orange) 50%, transparent); background: color-mix(in srgb, var(--orange) 14%, transparent); color: inherit; border-radius: 10px; padding: 8px 10px; font: inherit; font-size: 13px; font-weight: 600; text-align: left; cursor: pointer; }
 .side-foot { display: flex; align-items: center; gap: 10px; padding: 10px; margin-top: 10px; border-radius: 12px; background: var(--side-hover); }
 .side-foot .who { min-width: 0; flex: 1; text-decoration: none; color: var(--side-text); display: flex; align-items: center; gap: 10px; }
 .side-foot .who div b { display: block; font-size: 14px; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1483,6 +1484,7 @@ if (typeof module !== "undefined" && module.exports) {
     return out.sort().join("|");
   }
   function afterLoad() {
+    excelSoon();
     var r = route();
     if (state.quiet) { var same = state.quiet.sig === filesSignature(); state.quiet = null; if (same) return; }
     if (r.name === "meeting" && page && page.id === r.id) {
@@ -1512,6 +1514,7 @@ if (typeof module !== "undefined" && module.exports) {
       state.cache.set(newSha, obj);
       state.files.set(path, { sha: newSha, data: obj });
     }
+    excelSoon();
     return newSha;
   }
 
@@ -1727,7 +1730,8 @@ if (typeof module !== "undefined" && module.exports) {
         el("li", { text: "Under Repository permissions, set Contents to Read and write." }),
         el("li", { text: "Paste the token below." })),
       form,
-      configured() ? personalPanels() : null));
+      configured() ? personalPanels() : null,
+      configured() ? excelPanel() : null));
     if (!configured()) setTimeout(function () { (repoIn.value ? tokIn : repoIn).focus(); }, 0);
   }
   function personalPanels() {
@@ -2289,6 +2293,9 @@ if (typeof module !== "undefined" && module.exports) {
             } },
             el("span", { class: "dot", style: "background:" + PALETTE[hueIndex(t, PALETTE.length)] }), el("span", { class: "nm", text: t }), el("span", { class: "n", text: String(counts[t]) }));
         })] : null),
+      excel.status === "perm" || excel.status === "locked" ? el("button", { class: "excel-chip", type: "button",
+        title: excelStatusText(), onclick: excel.status === "perm" ? resumeExcel : function () { location.hash = "#/settings"; } },
+        excel.status === "perm" ? "Excel file paused · Resume" : "Excel file not updated") : "",
       el("div", { class: "side-foot" },
         el("a", { class: "who", href: "#/settings", title: "Settings" }, avatar(name || "?", "lg"),
           el("div", { style: "min-width:0" }, el("b", { text: name || "Add your name" }), el("span", { class: "synced", text: syncedText() }))),
@@ -3117,6 +3124,193 @@ if (typeof module !== "undefined" && module.exports) {
       else toast(e.message || "Couldn’t save.", true);
       return false;
     }
+  }
+
+  // ----- Excel file (kept up to date in a file you pick, e.g. in your OneDrive folder) -----
+  var excel = { handle: null, name: "", status: "off", last: 0, sig: null, timer: null, retry: null };
+  var EXCEL_SUPPORTED = typeof window.showSaveFilePicker === "function";
+  function idb(mode, fn) {
+    return new Promise(function (resolve, reject) {
+      var req;
+      try { req = indexedDB.open("perronote", 1); } catch (e) { reject(e); return; }
+      req.onupgradeneeded = function () { req.result.createObjectStore("kv"); };
+      req.onerror = function () { reject(req.error); };
+      req.onsuccess = function () {
+        var tx, r;
+        try { tx = req.result.transaction("kv", mode); r = fn(tx.objectStore("kv")); }
+        catch (e) { req.result.close(); reject(e); return; }
+        tx.oncomplete = function () { req.result.close(); resolve(r && r.result); };
+        tx.onerror = function () { req.result.close(); reject(tx.error); };
+      };
+    });
+  }
+  function excelRows() {
+    var focus = {}, name = myName();
+    focusIds().forEach(function (id) { focus[id] = true; });
+    var rows = allRows().filter(function (r) { return r.item.task; });
+    rows.sort(function (a, b) {
+      var da = parseDue(a.item.due), db = parseDue(b.item.due);
+      return (!!a.item.done - !!b.item.done) || ((da ? da.getTime() : Infinity) - (db ? db.getTime() : Infinity)) || (b.meetingTime - a.meetingTime);
+    });
+    return rows.map(function (r) {
+      var it = r.item, created = it.created ? new Date(it.created) : null;
+      return [it.task, it.owner || "", it.due || "", parseDue(it.due), it.done ? "Done" : "Open", isMine(it.owner, name) ? "Yes" : "",
+        focus[it.id] ? "Yes" : "", it.note || "", r.meetingTitle || "Added by you", r.meetingTime ? new Date(r.meetingTime) : null,
+        created && !isNaN(created.getTime()) ? created : null];
+    });
+  }
+  var EXCEL_HEAD = ["Task", "Owner", "Due", "Due date", "Status", "Mine", "Today’s focus", "Note", "Meeting", "Meeting date", "Added"];
+  var EXCEL_WIDTHS = [48, 20, 26, 12, 9, 7, 13, 48, 32, 13, 12];
+  /** A one-sheet .xlsx workbook, built by hand so the site needs no library. */
+  function buildXlsx(rows) {
+    function x(v) { return String(v).replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
+    function col(i) { return String.fromCharCode(65 + i); }
+    function serial(d) { return (Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) - Date.UTC(1899, 11, 30)) / 86400000; }
+    function cell(v, ref, header) {
+      if (v instanceof Date) return '<c r="' + ref + '" s="2"><v>' + serial(v) + "</v></c>";
+      if (v === null || v === "") return "";
+      return '<c r="' + ref + '" t="inlineStr"' + (header ? ' s="1"' : "") + '><is><t xml:space="preserve">' + x(v) + "</t></is></c>";
+    }
+    var all = [EXCEL_HEAD].concat(rows), last = col(EXCEL_HEAD.length - 1) + all.length;
+    var sheetRows = all.map(function (r, i) {
+      return '<row r="' + (i + 1) + '">' + r.map(function (v, j) { return cell(v, col(j) + (i + 1), i === 0); }).join("") + "</row>";
+    }).join("");
+    var NS = 'xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"', RNS = 'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"';
+    var head = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
+    var files = [
+      ["[Content_Types].xml", head + '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>'],
+      ["_rels/.rels", head + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>'],
+      ["xl/workbook.xml", head + "<workbook " + NS + " " + RNS + '><sheets><sheet name="Action items" sheetId="1" r:id="rId1"/></sheets><definedNames><definedName name="_xlnm._FilterDatabase" localSheetId="0" hidden="1">\'Action items\'!$A$1:$' + col(EXCEL_HEAD.length - 1) + "$" + all.length + "</definedName></definedNames></workbook>"],
+      ["xl/_rels/workbook.xml.rels", head + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>'],
+      ["xl/styles.xml", head + "<styleSheet " + NS + '><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="3"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/><xf numFmtId="14" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>'],
+      ["xl/worksheets/sheet1.xml", head + "<worksheet " + NS + " " + RNS + '><dimension ref="A1:' + last + '"/><sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><sheetFormatPr defaultRowHeight="15"/><cols>' +
+        EXCEL_WIDTHS.map(function (w, i) { return '<col min="' + (i + 1) + '" max="' + (i + 1) + '" width="' + w + '" customWidth="1"/>'; }).join("") +
+        "</cols><sheetData>" + sheetRows + '</sheetData><autoFilter ref="A1:' + last + '"/></worksheet>']
+    ];
+    return zipStore(files);
+  }
+  var CRC_TABLE = null;
+  function crc32(bytes) {
+    if (!CRC_TABLE) {
+      CRC_TABLE = new Uint32Array(256);
+      for (var n = 0; n < 256; n++) { var c = n; for (var k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; CRC_TABLE[n] = c >>> 0; }
+    }
+    var crc = 0xFFFFFFFF;
+    for (var i = 0; i < bytes.length; i++) crc = CRC_TABLE[(crc ^ bytes[i]) & 0xFF] ^ (crc >>> 8);
+    return (crc ^ 0xFFFFFFFF) >>> 0;
+  }
+  /** An uncompressed zip of [name, text] pairs. */
+  function zipStore(files) {
+    var enc = new TextEncoder(), parts = [], central = [], offset = 0;
+    files.forEach(function (f) {
+      var name = enc.encode(f[0]), data = enc.encode(f[1]), crc = crc32(data);
+      var h = new DataView(new ArrayBuffer(30));
+      h.setUint32(0, 0x04034b50, true); h.setUint16(4, 20, true); h.setUint16(6, 0x0800, true); h.setUint16(8, 0, true);
+      h.setUint16(10, 0, true); h.setUint16(12, 0x21, true); h.setUint32(14, crc, true); h.setUint32(18, data.length, true);
+      h.setUint32(22, data.length, true); h.setUint16(26, name.length, true); h.setUint16(28, 0, true);
+      var c = new DataView(new ArrayBuffer(46));
+      c.setUint32(0, 0x02014b50, true); c.setUint16(4, 20, true); c.setUint16(6, 20, true); c.setUint16(8, 0x0800, true); c.setUint16(10, 0, true);
+      c.setUint16(12, 0, true); c.setUint16(14, 0x21, true); c.setUint32(16, crc, true); c.setUint32(20, data.length, true); c.setUint32(24, data.length, true);
+      c.setUint16(28, name.length, true); c.setUint32(42, offset, true);
+      parts.push(h, name, data);
+      central.push(c, name);
+      offset += 30 + name.length + data.length;
+    });
+    var size = central.reduce(function (n, p) { return n + p.byteLength; }, 0);
+    var e = new DataView(new ArrayBuffer(22));
+    e.setUint32(0, 0x06054b50, true); e.setUint16(8, files.length, true); e.setUint16(10, files.length, true);
+    e.setUint32(12, size, true); e.setUint32(16, offset, true);
+    return new Blob(parts.concat(central, [e]), { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  }
+  function excelSoon(ms) {
+    if (!excel.handle) return;
+    clearTimeout(excel.timer);
+    excel.timer = setTimeout(excelWrite, ms == null ? 1500 : ms);
+  }
+  function excelStatusChanged() {
+    renderSidebar(route());
+    var box = document.getElementById("excel-status");
+    if (box) box.textContent = excelStatusText();
+  }
+  async function excelWrite() {
+    if (!excel.handle || !state.loaded || excel.busy) return;
+    clearTimeout(excel.retry);
+    var rows = excelRows(), sig = JSON.stringify(rows);
+    excel.busy = true;
+    try {
+      var perm = await excel.handle.queryPermission({ mode: "readwrite" });
+      if (perm !== "granted") { excel.status = "perm"; return; }
+      if (sig === excel.sig && excel.status === "ok") return;
+      var w = await excel.handle.createWritable();
+      await w.write(buildXlsx(rows));
+      await w.close();
+      excel.sig = sig; excel.status = "ok"; excel.last = Date.now();
+    } catch (e) {
+      excel.status = "locked";
+      excel.retry = setTimeout(excelWrite, 60000);
+    } finally {
+      excel.busy = false;
+      excelStatusChanged();
+    }
+  }
+  function excelStatusText() {
+    if (!excel.handle) return "Not connected.";
+    if (excel.status === "perm") return "Paused: this browser needs your OK to keep updating “" + excel.name + "”.";
+    if (excel.status === "locked") return "Couldn’t update “" + excel.name + "”. If it’s open in Excel, close it; trying again every minute.";
+    if (excel.status === "ok") return "Keeping “" + excel.name + "” up to date · updated " + new Date(excel.last).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    return "Connected to “" + excel.name + "”.";
+  }
+  async function connectExcel() {
+    var h;
+    try {
+      h = await window.showSaveFilePicker({ suggestedName: "PerroNote action items.xlsx", id: "perronote-excel",
+        types: [{ description: "Excel workbook", accept: { "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [".xlsx"] } }] });
+    } catch (e) { return; } // cancelled
+    excel.handle = h; excel.name = h.name; excel.sig = null; excel.status = "on";
+    try { await idb("readwrite", function (st) { return st.put(h, "excel"); }); } catch (e) { toast("This browser won’t remember the file after you close it.", true); }
+    if (!state.loaded) { try { await load(); } catch (e) { /* shown by load */ } }
+    await excelWrite();
+    if (excel.status === "ok") toast("Excel file saved. It updates whenever your items change.");
+    if (route().name === "settings") renderSettings();
+  }
+  async function resumeExcel() {
+    if (!excel.handle) return;
+    try { if (await excel.handle.requestPermission({ mode: "readwrite" }) === "granted") { excel.status = "on"; await excelWrite(); } } catch (e) { /* ignore */ }
+    excelStatusChanged();
+  }
+  async function disconnectExcel() {
+    clearTimeout(excel.timer); clearTimeout(excel.retry);
+    excel.handle = null; excel.name = ""; excel.status = "off"; excel.sig = null;
+    try { await idb("readwrite", function (st) { return st.delete("excel"); }); } catch (e) { /* ignore */ }
+    renderSidebar(route());
+    if (route().name === "settings") renderSettings();
+  }
+  function downloadExcel() {
+    var a = el("a", { href: URL.createObjectURL(buildXlsx(excelRows())), download: "PerroNote action items.xlsx" });
+    document.body.append(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 10000);
+  }
+  function excelPanel() {
+    if (!EXCEL_SUPPORTED) {
+      return el("div", { class: "card panel" }, el("h2", { text: "Excel file" }),
+        el("p", { class: "small muted", style: "margin:0 0 12px", text: "This browser can’t keep a file up to date. Use Edge or Chrome on a computer for that, or download a copy." }),
+        state.loaded ? el("button", { class: "btn", type: "button", text: "Download Excel", onclick: downloadExcel }) : null);
+    }
+    return el("div", { class: "card panel" }, el("h2", { text: "Excel file" }),
+      el("p", { class: "small muted", style: "margin:0 0 12px", text: "Pick a file in your OneDrive folder once. This browser rewrites it whenever your action items change, and OneDrive syncs it. Nothing extra to sign in to." }),
+      el("p", { id: "excel-status", class: "small", style: "margin:0 0 12px", text: excelStatusText() }),
+      el("div", { class: "btn-row" },
+        excel.status === "perm" ? el("button", { class: "btn primary", type: "button", text: "Resume", onclick: resumeExcel }) : null,
+        el("button", { class: "btn" + (excel.handle ? "" : " primary"), type: "button", text: excel.handle ? "Change file" : "Connect Excel file", onclick: connectExcel }),
+        state.loaded ? el("button", { class: "btn ghost", type: "button", text: "Download a copy", onclick: downloadExcel }) : null,
+        excel.handle ? el("button", { class: "btn ghost right", type: "button", text: "Disconnect", onclick: disconnectExcel }) : null));
+  }
+  if (EXCEL_SUPPORTED) {
+    idb("readonly", function (st) { return st.get("excel"); }).then(function (h) {
+      if (!h || excel.handle) return;
+      excel.handle = h; excel.name = h.name; excel.status = "on";
+      excelSoon(0);
+    }).catch(function () { /* no saved file */ });
   }
 
   // ----- Today's focus (focus.json: {day: "YYYY-MM-DD", items: [item ids]}) -----
