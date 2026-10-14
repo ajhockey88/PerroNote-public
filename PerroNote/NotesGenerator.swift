@@ -57,8 +57,11 @@ enum NotesGenerator {
     they are thanked or called on by name right before or after speaking), add an entry to \
     speaker_names with the label and the name. Only when it is reasonably clear; otherwise leave that \
     speaker out. Never give two speakers the same name.
-    - Attendees: the confirmed attendee list when one is given, plus anyone else named or addressed; \
-    empty if none are clear. Only real names: never list a "Speaker N" label as an attendee, since that \
+    - Attendees: only people who were actually on the call: the confirmed attendee list when one is \
+    given, plus anyone who clearly spoke, was spoken to and answered, or was greeted as joining. A \
+    person who is only talked about (a boss, a customer, someone out of office, a name in a \
+    story or an action item for someone not present) is NOT an attendee; mention them in the \
+    notes where relevant but leave them out of this list. Leave it empty if none are clear. Only real names: never list a "Speaker N" label as an attendee, since that \
     voice is usually one of the named people.
     - Abbreviations: write "COB" for close of business and "EOD" for end of day, everywhere they \
     appear, including in due dates.
@@ -118,7 +121,8 @@ enum NotesGenerator {
             "properties": [
                 "title": ["type": "string"],
                 "summary": ["type": "string"],
-                "attendees": ["type": "array", "items": ["type": "string"]],
+                "attendees": ["type": "array", "items": ["type": "string"],
+                              "description": "Only people who were on the call. Not people who were merely mentioned."],
                 "topics": [
                     "type": "array",
                     "items": [
