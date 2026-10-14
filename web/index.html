@@ -202,6 +202,10 @@ label.field > span { display: block; font-size: 13px; font-weight: 600; margin-b
 .cal-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
 .cal-dot.mtg { background: var(--muted); }
 .tcard.done .task { text-decoration: line-through; opacity: .55; }
+.itag { display: inline-block; font-size: 11.5px; font-weight: 600; color: var(--accent-strong); background: var(--accent-soft); border-radius: 999px; padding: 1px 8px; margin-left: 6px; white-space: nowrap; }
+.tagbar { display: flex; gap: 6px; flex-wrap: wrap; margin: 0 0 10px; }
+.tagbar .chip.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+.item-tags { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
 .brow { display: flex; gap: 6px; align-items: flex-start; margin-bottom: 0; }
 .brow .bul { font-size: 18px; flex: 0 0 18px; text-align: center; padding-top: 4px; color: var(--accent-strong); font-weight: 700; line-height: 1.5; }
 .brow.sub { margin-left: 26px; }
@@ -1312,7 +1316,7 @@ if (typeof module !== "undefined" && module.exports) {
     bulkMsg: null,        // { ok, text, lines } after one finishes
     showDone: lsGet(KEY_SHOWDONE) === "1",
     actionsView: lsGet("perronote.actionsView") === "calendar" ? "calendar" : "list",
-    calMonth: null, calDay: null,
+    calMonth: null, calDay: null, focusTag: null, actionTag: null,
     adding: false,
     dateFilter: "all"     // all, today, yesterday, thisWeek, lastWeek, thisMonth or day:YYYY-MM-DD
   };
@@ -2357,7 +2361,7 @@ if (typeof module !== "undefined" && module.exports) {
       var owner = splitOwners(r.item.owner)[0];
       var card = el("div", { class: "card tcard" + (r.item.done ? " done" : "") });
       card.append(tickBox(r, card), editableBody(r, card, rerenderHome, true,
-        el("div", { class: "task", text: r.item.task || "(no task)" }),
+        el("div", { class: "task" }, r.item.task || "(no task)", tagPills(r.item)),
         el("div", { class: "meta" }, owner ? avatar(canonPerson(owner, name), "sm") : null, meetingLinkOf(r),
           d ? el("span", { text: "· " + shortDue(d, today) }) : null)), pinBtn(r.item.id));
       return card;
@@ -3373,6 +3377,20 @@ if (typeof module !== "undefined" && module.exports) {
   function queued(fn) { var p = writeChain.then(fn, fn); writeChain = p.catch(function () {}); return p; }
   function localDay(d) { return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); }
   /** Pinned items that still exist, in order. On a new day, finished ones drop off and unfinished ones carry over. */
+  function itemTags(item) { return Array.isArray(item && item.tags) ? item.tags.map(function (t) { return String(t).trim(); }).filter(Boolean) : []; }
+  function allItemTags() {
+    var seen = {}, out = [];
+    allRows().forEach(function (r) { itemTags(r.item).forEach(function (t) { if (!seen[lc(t)]) { seen[lc(t)] = true; out.push(t); } }); });
+    return out.sort(function (a, b) { return a.localeCompare(b); });
+  }
+  function hasTag(item, tag) { return !tag || itemTags(item).some(function (t) { return lc(t) === lc(tag); }); }
+  function tagPills(item) { return itemTags(item).map(function (t) { return el("span", { class: "itag", text: "#" + t }); }); }
+  /** A row of tag buttons ("All" plus each tag); picking one calls pick(tag or null). */
+  function tagBar(current, tags, pick) {
+    var bar = el("div", { class: "tagbar" }, el("button", { class: "chip" + (current ? "" : " on"), type: "button", text: "All", onclick: function () { pick(null); } }));
+    tags.forEach(function (t) { bar.append(el("button", { class: "chip" + (lc(t) === lc(current) ? " on" : ""), type: "button", text: "#" + t, onclick: function () { pick(lc(t) === lc(current) ? null : t); } })); });
+    return bar;
+  }
   function focusRows() {
     var f = state.files.get(FOCUS);
     var d = f && f.data && typeof f.data === "object" && !Array.isArray(f.data) ? f.data : {};
@@ -3420,7 +3438,11 @@ if (typeof module !== "undefined" && module.exports) {
   }
   var TARGET_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1" fill="#fff"/></svg>';
   function focusCard(today) {
-    var rows = focusRows();
+    var allFocus = focusRows();
+    var focusTags = allItemTags();
+    if (state.focusTag && !focusTags.some(function (t) { return lc(t) === lc(state.focusTag); })) state.focusTag = null;
+    var filtering = !!state.focusTag;
+    var rows = allFocus.filter(function (r) { return hasTag(r.item, state.focusTag); });
     var done = rows.filter(function (r) { return r.item.done; }).length;
     var ic = el("span", { class: "focus-ic" }); ic.innerHTML = TARGET_SVG;
     var head = el("div", { class: "focus-head" }, ic, el("h2", { text: "Today’s focus" }));
@@ -3429,7 +3451,7 @@ if (typeof module !== "undefined" && module.exports) {
         el("span", { class: "cnt", text: done + " of " + rows.length + " done" }));
       if (done) head.append(el("button", { class: "btn ghost", type: "button", text: "Clear done", onclick: async function () {
         this.disabled = true;
-        if (await saveFocus(rows.filter(function (r) { return !r.item.done; }).map(function (r) { return r.item.id; }))) afterFocusChange();
+        if (await saveFocus(allFocus.filter(function (r) { return !r.item.done; }).map(function (r) { return r.item.id; }))) afterFocusChange();
       } }));
     }
     var list = el("div", { class: "flist" });
@@ -3437,23 +3459,23 @@ if (typeof module !== "undefined" && module.exports) {
       var d = parseDue(r.item.due);
       var row = el("div", { class: "frow" + (r.item.done ? " done" : ""), "data-id": r.item.id });
       var grip = el("span", { class: "grip", title: "Drag to reorder", "aria-hidden": "true", text: "⋮⋮" });
-      dragToReorder(grip, row, list);
+      if (!filtering) dragToReorder(grip, row, list); else grip.style.visibility = "hidden";
       var note = r.item.note && String(r.item.note).trim();
       row.append(grip, tickBox(r, row), editableBody(r, row, rerenderHome, false,
-        el("div", { class: "task" }, r.item.task || "(no task)", note ? el("span", { class: "note-ic", title: note, text: "📝 Note" }) : null),
+        el("div", { class: "task" }, r.item.task || "(no task)", note ? el("span", { class: "note-ic", title: note, text: "📝 Note" }) : null, tagPills(r.item)),
         el("div", { class: "meta" }, meetingLinkOf(r))),
         d ? el("span", { class: "pill " + dueGroup({ due: r.item.due }, today), text: shortDue(d, today) }) : null,
         el("button", { class: "btn ghost x", type: "button", text: "✕", title: "Remove from Today’s focus", "aria-label": "Remove from Today’s focus",
           onclick: function () { this.disabled = true; togglePin(r.item.id); } }));
       list.append(row);
     });
-    if (!rows.length) list.append(el("div", { class: "empty", text: "Pin items with ☆ to plan your day." }));
+    if (!rows.length) list.append(el("div", { class: "empty", text: filtering ? "Nothing pinned with #" + state.focusTag + "." : "Pin items with ☆ to plan your day." }));
 
     var pinned = {};
-    rows.forEach(function (r) { pinned[r.item.id] = true; });
+    allFocus.forEach(function (r) { pinned[r.item.id] = true; });
     var ideas = scopeRows(false).filter(function (r) {
       var du = parseDue(r.item.due);
-      return r.item.id && !pinned[r.item.id] && du && dayDiff(du, today) <= 0;
+      return r.item.id && !pinned[r.item.id] && du && dayDiff(du, today) <= 0 && hasTag(r.item, state.focusTag);
     }).sort(function (a, b) { return parseDue(a.item.due) - parseDue(b.item.due); }).slice(0, 4);
     var sug = el("div", { class: "suggest" }, ideas.length ? el("span", { text: "Due now:" }) : null);
     ideas.forEach(function (r) {
@@ -3478,7 +3500,8 @@ if (typeof module !== "undefined" && module.exports) {
       input.focus();
     } });
     sug.append(addChip);
-    return el("div", { class: "card focus" }, head, list, sug);
+    var bar = focusTags.length ? tagBar(state.focusTag, focusTags, function (t) { state.focusTag = t; afterFocusChange(); }) : null;
+    return el("div", { class: "card focus" }, head, bar, list, sug);
   }
   /** Drag the grip to move a focus row; the new order is saved on release. */
   function dragToReorder(grip, row, list) {
@@ -3510,10 +3533,10 @@ if (typeof module !== "undefined" && module.exports) {
   function noteDetails(r) {
     var status = el("span", { class: "muted", text: "" });
     var timer = null;
-    var v = { task: r.item.task || "", owner: r.item.owner || "", due: r.item.due || "", note: r.item.note || "" };
+    var v = { task: r.item.task || "", owner: r.item.owner || "", due: r.item.due || "", note: r.item.note || "", tags: itemTags(r.item) };
     function save() {
       clearTimeout(timer); timer = null;
-      var x = { task: v.task.trim().replace(/\s+/g, " "), owner: v.owner.trim().replace(/\s+/g, " "), due: v.due.trim(), note: v.note.trim() };
+      var x = { task: v.task.trim().replace(/\s+/g, " "), owner: v.owner.trim().replace(/\s+/g, " "), due: v.due.trim(), note: v.note.trim(), tags: v.tags.slice() };
       status.textContent = "Saving…";
       return queued(async function () {
         var ok = await writeItem(r.path, r.item.id, function (it) {
@@ -3521,6 +3544,7 @@ if (typeof module !== "undefined" && module.exports) {
           if (x.owner) it.owner = x.owner; else delete it.owner;
           if (x.due) it.due = x.due; else delete it.due;
           if (x.note) it.note = x.note; else delete it.note;
+          if (x.tags.length) it.tags = x.tags; else delete it.tags;
         });
         status.textContent = ok ? "Saved · syncs to your phone" : "Not saved";
       });
@@ -3548,11 +3572,36 @@ if (typeof module !== "undefined" && module.exports) {
     var ta = el("textarea", { rows: 3, placeholder: "Add details, links or next steps…", value: v.note, "aria-label": "Note" });
     ta.addEventListener("input", function () { v.note = ta.value; grow(ta); later(); });
 
+    var tagBox = el("div", { class: "item-tags" });
+    var tagListId = "itags-" + String(r.item.id).replace(/[^\w-]/g, "");
+    function drawTags(refocus) {
+      tagBox.replaceChildren();
+      v.tags.forEach(function (t, i) {
+        tagBox.append(el("span", { class: "tag tchip" }, t, el("button", { class: "x", type: "button", "aria-label": "Remove tag " + t, title: "Remove", text: "✕",
+          onclick: function () { v.tags.splice(i, 1); drawTags(); save(); } })));
+      });
+      var inp = el("input", { type: "text", class: "add-person sm", placeholder: "Add tag", list: tagListId, autocomplete: "off", "aria-label": "Add tag" });
+      function commit(keep) {
+        var t = inp.value.replace(/,/g, " ").replace(/\s+/g, " ").trim();
+        inp.value = "";
+        if (!t || v.tags.some(function (x) { return lc(x) === lc(t); })) return;
+        var known = allItemTags().find(function (x) { return lc(x) === lc(t); });
+        v.tags.push(known || t);
+        drawTags(keep); save();
+      }
+      inp.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === ",") { e.preventDefault(); commit(true); } });
+      inp.addEventListener("change", function () { commit(false); });
+      inp.addEventListener("blur", function () { setTimeout(function () { if (inp.isConnected) commit(false); }, 120); });
+      tagBox.append(inp, el("datalist", { id: tagListId }, allItemTags().filter(function (x) { return !v.tags.some(function (y) { return lc(y) === lc(x); }); }).map(function (x) { return el("option", { value: x }); })));
+      if (refocus) setTimeout(function () { inp.focus(); }, 0);
+    }
+    drawTags(false);
     var box = el("div", { class: "details" },
       el("div", { class: "fgrid" },
         field("Task", task),
         field("Owner", owner, el("datalist", { id: listId }, Object.keys(owners).sort().map(function (o) { return el("option", { value: o }); }))),
         field("Due", el("div", { class: "due-in" }, due, clearDue), dueHint)),
+      field("Tags", tagBox),
       field("Note", ta),
       el("div", { class: "row" }, pinBtnWide(r.item.id), status));
     box.flush = function () { if (timer) return save(); return writeChain; };
@@ -3610,7 +3659,7 @@ if (typeof module !== "undefined" && module.exports) {
               if (ok) { toast("Deleted"); var y = window.scrollY; rerender(); window.scrollTo(0, y); renderSidebar(route()); } else delBtn.disabled = false;
             } });
           var body = editableBody(r, row, rerender, true,
-            el("div", { class: "task", text: r.item.task || "(no task)" }),
+            el("div", { class: "task" }, r.item.task || "(no task)", tagPills(r.item)),
             el("div", { class: "meta" },
               r.item.owner ? el("span", { text: r.item.owner }) : null,
               r.item.due ? el("span", { class: "due " + dg, text: r.item.due }) : null,
@@ -3698,6 +3747,11 @@ if (typeof module !== "undefined" && module.exports) {
       ownerList.map(function (o) { return el("option", { value: o, text: o }); }));
     sel.value = state.owner;
     sel.addEventListener("change", function () { state.owner = sel.value; lsSet(KEY_OWNER, sel.value); renderActions(); });
+    var itemTagList = allItemTags();
+    if (state.actionTag && !itemTagList.some(function (t) { return lc(t) === lc(state.actionTag); })) state.actionTag = null;
+    var tagSel = itemTagList.length ? el("select", { "aria-label": "Tag" }, el("option", { value: "", text: "All tags" }),
+      itemTagList.map(function (t) { return el("option", { value: t, text: "#" + t }); })) : null;
+    if (tagSel) { tagSel.value = state.actionTag || ""; tagSel.addEventListener("change", function () { state.actionTag = tagSel.value || null; renderActions(); }); }
     var doneT = el("input", { type: "checkbox", checked: state.showDone });
     doneT.addEventListener("change", function () { state.showDone = doneT.checked; lsSet(KEY_SHOWDONE, doneT.checked ? "1" : "0"); renderActions(); });
     var addBtn = el("button", { class: "btn primary", type: "button", text: "+ Add", onclick: function () { state.adding = !state.adding; renderActions(); } });
@@ -3705,7 +3759,7 @@ if (typeof module !== "undefined" && module.exports) {
     var asCal = state.actionsView === "calendar";
     var viewBtn = el("button", { class: "btn", type: "button", text: asCal ? "List view" : "Calendar view", onclick: function () { state.actionsView = asCal ? "list" : "calendar"; lsSet("perronote.actionsView", state.actionsView); renderActions(); } });
     var nodes = [el("h1", { text: "Action items" }), summaryStrip(),
-      el("div", { class: "filters" }, sel, el("label", { class: "switch" }, doneT, "Show done"), viewBtn, addBtn)];
+      el("div", { class: "filters" }, sel, tagSel, el("label", { class: "switch" }, doneT, "Show done"), viewBtn, addBtn)];
     if (state.owner === ME && !name) {
       nodes.push(el("p", { class: "small muted", style: "margin:-6px 0 14px" }, "Showing items owned by “Me”. ", el("a", { href: "#/settings", text: "Add your name in Settings" }), " to include ones with your name."));
     }
@@ -3731,6 +3785,7 @@ if (typeof module !== "undefined" && module.exports) {
 
     var filtered = rows.filter(function (r) {
       if (!state.showDone && r.item.done) return false;
+      if (!hasTag(r.item, state.actionTag)) return false;
       if (state.owner === ME) return isMine(r.item.owner, name);
       if (state.owner) {
         var want = state.owner.toLowerCase();

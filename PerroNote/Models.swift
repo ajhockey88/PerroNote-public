@@ -10,6 +10,8 @@ struct ActionItem: Codable, Identifiable, Hashable {
     var created: Date? = nil
     /// Your own details about the item, written on the website or in the app.
     var note: String? = nil
+    /// Your own labels for the item, added on the website.
+    var tags: [String]? = nil
 }
 
 /// One core discussion point with the details that were said about it.
