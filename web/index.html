@@ -3147,20 +3147,20 @@ if (typeof module !== "undefined" && module.exports) {
   function excelRows() {
     var focus = {}, name = myName();
     focusIds().forEach(function (id) { focus[id] = true; });
-    var rows = allRows().filter(function (r) { return r.item.task; });
+    var rows = allRows().filter(function (r) { return r.item.task && isMine(r.item.owner, name); });
     rows.sort(function (a, b) {
       var da = parseDue(a.item.due), db = parseDue(b.item.due);
       return (!!a.item.done - !!b.item.done) || ((da ? da.getTime() : Infinity) - (db ? db.getTime() : Infinity)) || (b.meetingTime - a.meetingTime);
     });
     return rows.map(function (r) {
       var it = r.item, created = it.created ? new Date(it.created) : null;
-      return [it.task, it.owner || "", it.due || "", parseDue(it.due), it.done ? "Done" : "Open", isMine(it.owner, name) ? "Yes" : "",
+      return [it.task, it.owner || "", it.due || "", parseDue(it.due), it.done ? "Done" : "Open",
         focus[it.id] ? "Yes" : "", it.note || "", r.meetingTitle || "Added by you", r.meetingTime ? new Date(r.meetingTime) : null,
         created && !isNaN(created.getTime()) ? created : null];
     });
   }
-  var EXCEL_HEAD = ["Task", "Owner", "Due", "Due date", "Status", "Mine", "Today’s focus", "Note", "Meeting", "Meeting date", "Added"];
-  var EXCEL_WIDTHS = [48, 20, 26, 12, 9, 7, 13, 48, 32, 13, 12];
+  var EXCEL_HEAD = ["Task", "Owner", "Due", "Due date", "Status", "Today’s focus", "Note", "Meeting", "Meeting date", "Added"];
+  var EXCEL_WIDTHS = [48, 20, 26, 12, 9, 13, 48, 32, 13, 12];
   /** A one-sheet .xlsx workbook, built by hand so the site needs no library. */
   function buildXlsx(rows) {
     function x(v) { return String(v).replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
@@ -3297,7 +3297,7 @@ if (typeof module !== "undefined" && module.exports) {
         state.loaded ? el("button", { class: "btn", type: "button", text: "Download Excel", onclick: downloadExcel }) : null);
     }
     return el("div", { class: "card panel" }, el("h2", { text: "Excel file" }),
-      el("p", { class: "small muted", style: "margin:0 0 12px", text: "Pick a file in your OneDrive folder once. This browser rewrites it whenever your action items change, and OneDrive syncs it. Nothing extra to sign in to." }),
+      el("p", { class: "small muted", style: "margin:0 0 12px", text: "Pick a file in your OneDrive folder once. This browser rewrites it with your action items whenever they change, and OneDrive syncs it. Nothing extra to sign in to." }),
       el("p", { id: "excel-status", class: "small", style: "margin:0 0 12px", text: excelStatusText() }),
       el("div", { class: "btn-row" },
         excel.status === "perm" ? el("button", { class: "btn primary", type: "button", text: "Resume", onclick: resumeExcel }) : null,
