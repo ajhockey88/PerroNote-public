@@ -261,6 +261,14 @@ label.field > span { display: block; font-size: 13px; font-weight: 600; margin-b
 .details { margin: 10px 0 2px; padding: 12px 14px; background: var(--surface-2); border-radius: 12px; cursor: default; }
 .details label { display: block; font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
 .details textarea { width: 100%; background: var(--surface); min-height: 84px; }
+.details input[type=text], .details input[type=date] { width: 100%; background: var(--surface); padding: 7px 10px; }
+.details .fld { margin-bottom: 10px; min-width: 0; }
+.details .fgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 10px; }
+.details .fgrid .fld:first-child { grid-column: 1 / -1; }
+.details .due-in { display: flex; gap: 6px; }
+.details .due-in .btn { flex: none; padding: 6px 10px; }
+.details .hint { font-size: 12px; color: var(--muted); margin-top: 3px; }
+@media (max-width: 560px) { .details .fgrid { grid-template-columns: 1fr; } }
 .details .row { display: flex; gap: 8px; align-items: center; margin-top: 10px; flex-wrap: wrap; }
 .details .row .muted { font-size: 12.5px; margin-left: auto; }
 .note-line { display: flex; gap: 6px; align-items: flex-start; margin-top: 5px; font-size: 13.5px; color: var(--muted); overflow-wrap: anywhere; white-space: pre-line; }
@@ -3069,7 +3077,7 @@ if (typeof module !== "undefined" && module.exports) {
         page.baseData = clone(obj);
         [page.form, page.initialForm].forEach(function (fm) {
           var x = fm.items.find(function (y) { return y.id === id; });
-          if (x) { x.done = !!it.done; x.note = it.note || ""; }
+          if (x) { x.done = !!it.done; x.note = it.note || ""; x.task = it.task || ""; x.owner = it.owner || ""; x.due = it.due || ""; }
         });
         page.baselineJSON = JSON.stringify(applyForm(clone(obj), page.initialForm));
       }
@@ -3494,25 +3502,53 @@ if (typeof module !== "undefined" && module.exports) {
   /** The note area under an open action item row. Saves as you type. */
   function noteDetails(r) {
     var status = el("span", { class: "muted", text: "" });
-    var timer = null, value = r.item.note || "";
+    var timer = null;
+    var v = { task: r.item.task || "", owner: r.item.owner || "", due: r.item.due || "", note: r.item.note || "" };
     function save() {
-      timer = null;
-      var v = value.trim();
+      clearTimeout(timer); timer = null;
+      var x = { task: v.task.trim().replace(/\s+/g, " "), owner: v.owner.trim().replace(/\s+/g, " "), due: v.due.trim(), note: v.note.trim() };
       status.textContent = "Saving…";
       return queued(async function () {
-        var ok = await writeItem(r.path, r.item.id, function (it) { if (v) it.note = v; else delete it.note; });
+        var ok = await writeItem(r.path, r.item.id, function (it) {
+          if (x.task) it.task = x.task;
+          if (x.owner) it.owner = x.owner; else delete it.owner;
+          if (x.due) it.due = x.due; else delete it.due;
+          if (x.note) it.note = x.note; else delete it.note;
+        });
         status.textContent = ok ? "Saved · syncs to your phone" : "Not saved";
       });
     }
-    var ta = el("textarea", { rows: 3, placeholder: "Add details, links or next steps…", value: value, "aria-label": "Note" });
-    ta.addEventListener("input", function () {
-      value = ta.value; grow(ta);
-      status.textContent = "Editing…";
-      clearTimeout(timer); timer = setTimeout(save, 900);
+    function later() { status.textContent = "Editing…"; clearTimeout(timer); timer = setTimeout(save, 900); }
+    function field(label, input, extra) { return el("div", { class: "fld" }, el("label", { text: label }), input, extra || null); }
+
+    var task = el("input", { type: "text", value: v.task, placeholder: "Task", "aria-label": "Task" });
+    task.addEventListener("input", function () { v.task = task.value; later(); });
+    var owners = {};
+    allRows().forEach(function (x) { splitOwners(x.item.owner).forEach(function (o) { if (o) owners[o] = true; }); });
+    var listId = "owners-" + String(r.item.id).replace(/[^\w-]/g, "");
+    var owner = el("input", { type: "text", value: v.owner, placeholder: "Who owns it", "aria-label": "Owner", list: listId, autocomplete: "off" });
+    owner.addEventListener("input", function () { v.owner = owner.value; later(); });
+    var d = parseDue(v.due);
+    var due = el("input", { type: "date", "aria-label": "Due date", value: d ? localDay(d) : "" });
+    var dueHint = el("div", { class: "hint", text: v.due && !d ? "Now: “" + v.due + "”" : "" });
+    due.addEventListener("change", function () {
+      var p = due.value ? due.value.split("-").map(Number) : null;
+      v.due = p ? formatDue(new Date(p[0], p[1] - 1, p[2])) : "";
+      dueHint.textContent = "";
+      save();
     });
-    var box = el("div", { class: "details" }, el("label", { text: "Note" }), ta,
+    var clearDue = el("button", { class: "btn ghost", type: "button", text: "No date", onclick: function () { due.value = ""; v.due = ""; dueHint.textContent = ""; save(); } });
+    var ta = el("textarea", { rows: 3, placeholder: "Add details, links or next steps…", value: v.note, "aria-label": "Note" });
+    ta.addEventListener("input", function () { v.note = ta.value; grow(ta); later(); });
+
+    var box = el("div", { class: "details" },
+      el("div", { class: "fgrid" },
+        field("Task", task),
+        field("Owner", owner, el("datalist", { id: listId }, Object.keys(owners).sort().map(function (o) { return el("option", { value: o }); }))),
+        field("Due", el("div", { class: "due-in" }, due, clearDue), dueHint)),
+      field("Note", ta),
       el("div", { class: "row" }, pinBtnWide(r.item.id), status));
-    box.flush = function () { if (timer) { clearTimeout(timer); return save(); } return writeChain; };
+    box.flush = function () { if (timer) return save(); return writeChain; };
     setTimeout(function () { grow(ta); }, 0);
     return box;
   }
@@ -3552,7 +3588,7 @@ if (typeof module !== "undefined" && module.exports) {
           var key = r.path + "#" + r.item.id, open = !!state.openNote[key];
           var note = r.item.note && String(r.item.note).trim();
           var details = open ? noteDetails(r) : null;
-          var body = el("div", { class: "body", title: open ? "" : "Click for notes" },
+          var body = el("div", { class: "body", title: open ? "" : "Click to edit" },
             el("div", { class: "task", text: r.item.task || "(no task)" }),
             el("div", { class: "meta" },
               r.item.owner ? el("span", { text: r.item.owner }) : null,
