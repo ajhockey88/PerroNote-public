@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>PerroNote OneDrive check</title>
+<link rel="icon" type="image/png" href="favicon.png">
+<style>
+:root { --bg: #f6f5f3; --surface: #fff; --text: #1d1b19; --muted: #6f6a64; --border: #e4e0db; --accent: #FF7A45; --red: #E5413A; --green: #2e9e5b; color-scheme: light; }
+@media (prefers-color-scheme: dark) { :root { --bg: #141312; --surface: #1e1c1b; --text: #f2efec; --muted: #a39d96; --border: #353230; color-scheme: dark; } }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; }
+main { max-width: 560px; margin: 0 auto; padding: 28px 16px 60px; }
+h1 { font-size: 24px; margin: 0 0 6px; }
+p { margin: 6px 0 14px; }
+.muted { color: var(--muted); }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 18px; margin-bottom: 14px; }
+label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 12px; }
+input { display: block; width: 100%; margin-top: 6px; border: 1px solid var(--border); background: var(--surface); color: inherit; border-radius: 10px; padding: 9px 12px; font: inherit; }
+button { border: 0; background: var(--accent); color: #fff; border-radius: 10px; padding: 9px 16px; font: inherit; font-weight: 600; cursor: pointer; }
+button:disabled { opacity: 0.5; cursor: default; }
+code { background: var(--border); border-radius: 5px; padding: 1px 5px; font-size: 13px; overflow-wrap: anywhere; }
+#result { white-space: pre-wrap; overflow-wrap: anywhere; }
+.ok { color: var(--green); font-weight: 650; }
+.bad { color: var(--red); font-weight: 650; }
+</style>
+</head>
+<body>
+<main>
+  <h1>OneDrive check</h1>
+  <p class="muted">Signs in with your work Microsoft account and saves one small test file, <code>PerroNote test.txt</code>, to your OneDrive. Nothing from your notes is sent.</p>
+  <form class="card" id="form">
+    <label>Application (client) ID<input id="client" autocomplete="off" spellcheck="false" placeholder="00000000-0000-0000-0000-000000000000"></label>
+    <label>Directory (tenant) ID<input id="tenant" autocomplete="off" spellcheck="false" placeholder="00000000-0000-0000-0000-000000000000"></label>
+    <button id="go" type="submit">Sign in and test</button>
+  </form>
+  <div class="card" id="result">Redirect URI to register: <code id="uri"></code></div>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3.30.0/lib/msal-browser.min.js"></script>
+<script>
+"use strict";
+(function () {
+  var uri = location.origin + location.pathname;
+  var out = document.getElementById("result");
+  var client = document.getElementById("client"), tenant = document.getElementById("tenant"), go = document.getElementById("go");
+  document.getElementById("uri").textContent = uri;
+  try { client.value = localStorage.getItem("perronote.msClient") || ""; tenant.value = localStorage.getItem("perronote.msTenant") || ""; } catch (e) { /* ignore */ }
+
+  function show(cls, title, detail) {
+    out.replaceChildren();
+    var t = document.createElement("div"); t.className = cls; t.textContent = title; out.append(t);
+    if (detail) { var d = document.createElement("p"); d.textContent = detail; out.append(d); }
+  }
+  /** Turns a sign-in error into what it means for the PerroNote plan. */
+  function explain(e) {
+    var msg = String((e && (e.errorMessage || e.message)) || e);
+    if (/AADSTS90094|AADSTS90095|admin approval|admin consent|AADSTS65001/i.test(msg))
+      return ["Blocked: your company needs an admin to approve this app.", "Ask IT to grant admin consent for the app (Files.ReadWrite and User.Read). After that the live Excel file will work.\n\n" + msg];
+    if (/AADSTS50011/i.test(msg))
+      return ["The redirect URI doesn't match.", "In the app registration, under Authentication, add a Single-page application platform with this redirect URI:\n" + uri + "\n\n" + msg];
+    if (/AADSTS700016|AADSTS90002|AADSTS900023/i.test(msg))
+      return ["The client or tenant ID is wrong.", "Copy both from the app registration's Overview page.\n\n" + msg];
+    if (/AADSTS53003|AADSTS50105|AADSTS530/i.test(msg))
+      return ["Blocked by a company sign-in policy.", "Your company only allows approved apps or devices. IT would need to allow it.\n\n" + msg];
+    if (/popup_window_error|empty_window_error|popup/i.test(msg))
+      return ["The sign-in window was blocked or closed.", "Allow pop-ups for this site and try again.\n\n" + msg];
+    if (/user_cancelled|AADSTS65004/i.test(msg))
+      return ["Sign-in was cancelled.", "If a screen asked you to accept permissions, choose Accept to finish the test.\n\n" + msg];
+    return ["Something else went wrong.", msg];
+  }
+
+  document.getElementById("form").addEventListener("submit", async function (ev) {
+    ev.preventDefault();
+    var c = client.value.trim(), t = tenant.value.trim();
+    var guid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!guid.test(c) || !guid.test(t)) { show("bad", "Paste both IDs from the app registration's Overview page."); return; }
+    try { localStorage.setItem("perronote.msClient", c); localStorage.setItem("perronote.msTenant", t); } catch (e) { /* ignore */ }
+    if (!window.msal) { show("bad", "The Microsoft sign-in library didn't load.", "Your network may block cdn.jsdelivr.net. Try another network."); return; }
+    go.disabled = true;
+    show("", "Signing in…");
+    try {
+      var app = new msal.PublicClientApplication({ auth: { clientId: c, authority: "https://login.microsoftonline.com/" + t, redirectUri: uri }, cache: { cacheLocation: "sessionStorage" } });
+      await app.initialize();
+      var login = await app.loginPopup({ scopes: ["User.Read", "Files.ReadWrite"], prompt: "select_account" });
+      var token = (await app.acquireTokenSilent({ scopes: ["Files.ReadWrite"], account: login.account })).accessToken;
+      show("", "Signed in as " + login.account.username + ". Saving the test file…");
+      var body = "PerroNote can write to your OneDrive.\nTested " + new Date().toString() + "\nYou can delete this file.\n";
+      var res = await fetch("https://graph.microsoft.com/v1.0/me/drive/root:/PerroNote%20test.txt:/content", {
+        method: "PUT", headers: { "Authorization": "Bearer " + token, "Content-Type": "text/plain" }, body: body });
+      if (!res.ok) {
+        var text = await res.text();
+        show("bad", "Signed in, but OneDrive refused the file (" + res.status + ").", res.status === 403 ? "Your company may block OneDrive access for apps. IT would need to allow it.\n\n" + text : text);
+        return;
+      }
+      var info = await res.json();
+      show("ok", "It works. PerroNote can keep an Excel file in your OneDrive up to date.",
+        "Signed in as " + login.account.username + ". The test file is at " + (info.webUrl || "the top of your OneDrive") + ". You can delete it.");
+    } catch (e) {
+      var x = explain(e);
+      show("bad", x[0], x[1]);
+    } finally {
+      go.disabled = false;
+    }
+  });
+})();
+</script>
+</body>
+</html>
