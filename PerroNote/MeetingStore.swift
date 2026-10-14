@@ -404,21 +404,28 @@ final class MeetingStore: ObservableObject {
         return out + ns.substring(from: last)
     }
 
-    /// Keeps action items you already ticked when the notes are redrafted, even if the wording shifted a little.
+    /// Keeps ticks and notes on action items when the notes are redrafted, even if the wording shifted a little.
     private static func carryOverTicks(from old: MeetingNotes?, into new: inout MeetingNotes) {
         guard let old else { return }
         func words(_ s: String) -> Set<String> {
             Set(s.lowercased().split { !$0.isLetter && !$0.isNumber }.map(String.init))
         }
+        func similar(_ a: Set<String>, _ b: Set<String>) -> Bool {
+            let total = Double(a.union(b).count)
+            return total > 0 && Double(a.intersection(b).count) / total >= 0.5
+        }
         let done = old.actionItems.filter(\.done).map { words($0.task) }
-        guard !done.isEmpty else { return }
+        let notes = old.actionItems.compactMap { item -> (Set<String>, String)? in
+            guard let note = item.note, !note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+            return (words(item.task), note)
+        }
+        guard !done.isEmpty || !notes.isEmpty else { return }
         for i in new.actionItems.indices {
             let w = words(new.actionItems[i].task)
-            if done.contains(where: { d in
-                let overlap = Double(d.intersection(w).count)
-                let total = Double(d.union(w).count)
-                return total > 0 && overlap / total >= 0.5
-            }) { new.actionItems[i].done = true }
+            if done.contains(where: { similar($0, w) }) { new.actionItems[i].done = true }
+            if new.actionItems[i].note == nil, let match = notes.first(where: { similar($0.0, w) }) {
+                new.actionItems[i].note = match.1
+            }
         }
     }
 

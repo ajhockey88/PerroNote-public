@@ -256,6 +256,46 @@ label.field > span { display: block; font-size: 13px; font-weight: 600; margin-b
 .arow.done .task { text-decoration: line-through; color: var(--muted); }
 .arow .meta a { color: var(--muted); text-decoration: underline; text-decoration-color: var(--border); text-underline-offset: 2px; }
 .arow .meta a:hover { color: var(--accent); }
+.arow .body { cursor: pointer; }
+.arow.open { background: color-mix(in srgb, var(--accent) 4%, var(--surface)); }
+.details { margin: 10px 0 2px; padding: 12px 14px; background: var(--surface-2); border-radius: 12px; cursor: default; }
+.details label { display: block; font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+.details textarea { width: 100%; background: var(--surface); min-height: 84px; }
+.details .row { display: flex; gap: 8px; align-items: center; margin-top: 10px; flex-wrap: wrap; }
+.details .row .muted { font-size: 12.5px; margin-left: auto; }
+.note-line { display: flex; gap: 6px; align-items: flex-start; margin-top: 5px; font-size: 13.5px; color: var(--muted); overflow-wrap: anywhere; white-space: pre-line; }
+.pin { flex: none; border: 0; background: none; color: var(--muted); font-size: 17px; line-height: 1; padding: 0 2px; cursor: pointer; font-family: inherit; }
+.pin:hover { color: var(--accent); }
+.pin.on { color: var(--accent); }
+.item-row .note-in { grid-column: 1 / 3; }
+/* Today's focus */
+.focus { padding: 16px 18px; margin-bottom: 18px; border-color: color-mix(in srgb, var(--accent) 30%, var(--border)); }
+.focus-head { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; flex-wrap: wrap; }
+.focus-head h2 { margin: 0; color: var(--accent-strong); }
+@media (prefers-color-scheme: dark) { .focus-head h2 { color: var(--accent); } }
+.focus-ic { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; background: linear-gradient(135deg, #ff8a55, #f0602a); box-shadow: 0 3px 8px rgba(240,96,42,.3); flex: none; }
+.focus-ic svg { width: 18px; height: 18px; }
+.focus-head .prog { flex: 1; min-width: 60px; max-width: 220px; height: 8px; border-radius: 99px; background: var(--surface-2); overflow: hidden; }
+.focus-head .prog i { display: block; height: 100%; background: linear-gradient(90deg, #ff8a55, #f0602a); border-radius: 99px; }
+.focus-head .cnt { font-size: 13px; color: var(--muted); font-weight: 600; }
+.focus-head .btn { margin-left: auto; }
+.frow { display: flex; align-items: center; gap: 12px; padding: 10px 8px; border-top: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
+.frow:first-child { border-top: 0; }
+.frow .grip { color: var(--muted); cursor: grab; font-size: 16px; letter-spacing: -3px; width: 14px; opacity: .6; touch-action: none; user-select: none; flex: none; }
+.frow .body { flex: 1; min-width: 0; }
+.frow .task { font-weight: 600; overflow-wrap: anywhere; }
+.frow .meta { font-size: 12.5px; }
+.frow .meta a { color: var(--muted); text-decoration: none; }
+.frow .meta a:hover { color: var(--accent); }
+.frow.done .task { text-decoration: line-through; color: var(--muted); }
+.frow .note-ic { font-size: 12.5px; color: var(--muted); margin-left: 8px; font-weight: 400; }
+.frow .x { flex: none; padding: 2px 8px; }
+.frow.drag { box-shadow: 0 8px 24px rgba(0,0,0,.12); position: relative; z-index: 2; border-top-color: transparent; }
+.focus .empty { color: var(--muted); font-size: 14px; padding: 6px 0; }
+.suggest { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 10px; padding-top: 12px; border-top: 1px dashed var(--border); font-size: 13.5px; color: var(--muted); }
+.suggest .chip { color: var(--text); cursor: pointer; font-family: inherit; }
+.suggest form { display: flex; gap: 8px; flex: 1; min-width: 220px; }
+.suggest form input { flex: 1; padding: 6px 10px; }
 .due.overdue { color: var(--red); font-weight: 600; }
 .due.today { color: var(--orange); font-weight: 600; }
 .due.tomorrow { color: var(--blue); font-weight: 600; }
@@ -1155,7 +1195,7 @@ if (typeof module !== "undefined" && module.exports) {
 <script id="app-script">
 "use strict";
 (function () {
-  var LOOSE = "action-items.json", RCPT_FILE = "recipients.json";
+  var LOOSE = "action-items.json", RCPT_FILE = "recipients.json", FOCUS = "focus.json";
   var DEFAULT_REPO = "ajhockey88/perronote-data";
   var KEY_REPO = "perronote.repo", KEY_TOKEN = "perronote.token", KEY_SHOWDONE = "perronote.showDone";
   var KEY_NAME = "perronote.myName", KEY_RCPT = "perronote.recipients", KEY_LASTRCPT = "perronote.lastRecipient", KEY_OWNER = "perronote.ownerFilter";
@@ -1230,6 +1270,7 @@ if (typeof module !== "undefined" && module.exports) {
   // ---------- state ----------
   var state = {
     branch: null,
+    openNote: {},         // "path#id" -> true for action items showing their note
     files: new Map(),     // path -> { sha, data }
     cache: new Map(),     // sha -> parsed data
     loaded: false,
@@ -1370,7 +1411,7 @@ if (typeof module !== "undefined" && module.exports) {
     await Promise.all(workers);
   }
 
-  function isDataPath(p) { return p === LOOSE || p === RCPT_FILE || p === "people.json" || /^meetings\/[^/]+\.json$/.test(p); }
+  function isDataPath(p) { return p === LOOSE || p === RCPT_FILE || p === FOCUS || p === "people.json" || /^meetings\/[^/]+\.json$/.test(p); }
 
   function load() {
     if (!configured()) return Promise.resolve();
@@ -2133,7 +2174,7 @@ if (typeof module !== "undefined" && module.exports) {
     row.append(tickBox(r, row), el("div", { class: "body" },
       el("div", { class: "task", text: r.item.task || "(no task)" }),
       el("div", { class: "meta" }, showOwner && r.item.owner ? el("span", { text: r.item.owner }) : null, meetingLinkOf(r))),
-      d ? el("span", { class: "pill " + dueGroup({ due: r.item.due }, today), text: shortDue(d, today) }) : null);
+      d ? el("span", { class: "pill " + dueGroup({ due: r.item.due }, today), text: shortDue(d, today) }) : null, pinBtn(r.item.id));
     return row;
   }
   /** Upcoming key dates from every meeting, soonest first. */
@@ -2290,7 +2331,7 @@ if (typeof module !== "undefined" && module.exports) {
       card.append(tickBox(r, card), el("div", { class: "body" },
         el("div", { class: "task", text: r.item.task || "(no task)" }),
         el("div", { class: "meta" }, owner ? avatar(canonPerson(owner, name), "sm") : null, meetingLinkOf(r),
-          d ? el("span", { text: "· " + shortDue(d, today) }) : null)));
+          d ? el("span", { text: "· " + shortDue(d, today) }) : null)), pinBtn(r.item.id));
       return card;
     }
     function column(key, title, rows, empty) {
@@ -2335,6 +2376,7 @@ if (typeof module !== "undefined" && module.exports) {
         bigStat("s-od", st.overdue, "Overdue", "alert", showActions),
         bigStat("s-td", st.today, "Due today", "clock", showActions),
         bigStat("s-wk", thisWeek.length, "Meetings this week", "dates", function () { state.dateFilter = "thisWeek"; state.tag = null; state.search = ""; location.hash = "#/meetings"; })),
+      focusCard(today),
       el("div", { class: "board" },
         column("overdue", "Overdue", cols.overdue, "Nothing overdue."),
         column("today", "Today", cols.today, "Nothing due today."),
@@ -2375,7 +2417,7 @@ if (typeof module !== "undefined" && module.exports) {
         }) };
       }),
       items: (n && Array.isArray(n.actionItems) ? n.actionItems.filter(Boolean) : []).map(function (a) {
-        return { id: a.id, task: a.task || "", owner: a.owner || "", due: a.due || "", done: !!a.done };
+        return { id: a.id, task: a.task || "", owner: a.owner || "", due: a.due || "", done: !!a.done, note: typeof a.note === "string" ? a.note : "" };
       })
     };
   }
@@ -2425,6 +2467,8 @@ if (typeof module !== "undefined" && module.exports) {
       var o = fi.owner.trim(), du = fi.due.trim();
       if (o) a.owner = o; else delete a.owner;
       if (du) a.due = du; else delete a.due;
+      var nt = String(fi.note || "").trim();
+      if (nt) a.note = nt; else delete a.note;
       a.done = !!fi.done;
       return a;
     });
@@ -2472,8 +2516,8 @@ if (typeof module !== "undefined" && module.exports) {
     var ai = new Map(a.items.map(function (x) { return [x.id, x]; }));
     b.items.forEach(function (x) {
       var o = ai.get(x.id);
-      if (!o || o.task !== x.task || o.owner !== x.owner || o.due !== x.due || o.done !== x.done) {
-        out.push({ label: o ? "Action item" : "New action item", value: (x.done ? "[done] " : "") + [x.task, x.owner, x.due].filter(Boolean).join(" — ") });
+      if (!o || o.task !== x.task || o.owner !== x.owner || o.due !== x.due || o.done !== x.done || (o.note || "") !== (x.note || "")) {
+        out.push({ label: o ? "Action item" : "New action item", value: (x.done ? "[done] " : "") + [x.task, x.owner, x.due].filter(Boolean).join(" — ") + (x.note ? "\nNote: " + x.note : "") });
       }
       ai.delete(x.id);
     });
@@ -2955,13 +2999,15 @@ if (typeof module !== "undefined" && module.exports) {
       due.addEventListener("input", function () { it.due = due.value; updateSaveUI(); });
       var del = el("button", { class: "btn ghost del", type: "button", title: "Delete", "aria-label": "Delete action item", text: "✕",
         onclick: function () { fm.items.splice(i, 1); rerenderMeeting(); updateSaveUI(); } });
-      row.append(cb, task, del, el("div", { class: "sub" }, owner, due));
+      var note = el("input", { type: "text", class: "note-in", value: it.note || "", placeholder: "Note", "aria-label": "Note" });
+      note.addEventListener("input", function () { it.note = note.value; updateSaveUI(); });
+      row.append(cb, task, del, el("div", { class: "sub" }, owner, due, note));
       return row;
     });
     nodes.push(section("Action items",
       rows.length ? el("div", null, rows) : el("p", { class: "empty-note", style: "margin:0 0 8px", text: "No action items." }),
       el("div", { class: "add-row", style: "margin-top:10px" }, el("button", { class: "btn", type: "button", text: "+ Add action item", onclick: function () {
-        fm.items.push({ id: newId(), task: "", owner: "", due: "", done: false, created: new Date().toISOString() });
+        fm.items.push({ id: newId(), task: "", owner: "", due: "", done: false, note: "", created: new Date().toISOString() });
         rerenderMeeting(); updateSaveUI();
         var inputs = app.querySelectorAll(".item-row .task"); if (inputs.length) inputs[inputs.length - 1].focus();
       } }))));
@@ -2992,24 +3038,25 @@ if (typeof module !== "undefined" && module.exports) {
     looseItems().forEach(function (a) { rows.push({ item: a, path: LOOSE, meetingTitle: null, meetingTime: 0 }); });
     return rows;
   }
-  async function toggleItem(path, id, done) {
+  /** Changes one action item in its meeting (or the loose list) with mutate(item) and saves it. */
+  async function writeItem(path, id, mutate, quiet) {
     var f = state.files.get(path);
     if (!f) return false;
     var obj = clone(f.data);
     var arr = path === LOOSE ? obj : (obj.notes && obj.notes.actionItems);
     var it = Array.isArray(arr) && arr.find(function (a) { return a && a.id === id; });
     if (!it) return false;
-    it.done = done;
+    mutate(it);
     if (path !== LOOSE) obj.updated = new Date().toISOString();
     try {
       await putFile(path, obj, f.sha, path === LOOSE ? "action items" : (obj.title || "meeting"));
       if (page && !page.gone && page.path === path && path !== LOOSE) {
-        // keep the open meeting editor in step so its checkbox matches
+        // keep the open meeting editor in step with the change
         page.baseSha = state.files.get(path).sha;
         page.baseData = clone(obj);
         [page.form, page.initialForm].forEach(function (fm) {
           var x = fm.items.find(function (y) { return y.id === id; });
-          if (x) x.done = done;
+          if (x) { x.done = !!it.done; x.note = it.note || ""; }
         });
         page.baselineJSON = JSON.stringify(applyForm(clone(obj), page.initialForm));
       }
@@ -3018,10 +3065,12 @@ if (typeof module !== "undefined" && module.exports) {
       if (e.status === 409) {
         await load();
         toast("That changed on the phone and was reloaded. Try again.", true);
-      } else toast(e.message || "Couldn’t save.", true);
+      } else if (!quiet) toast(e.message || "Couldn’t save.", true);
+      else throw e;
       return false;
     }
   }
+  function toggleItem(path, id, done) { return writeItem(path, id, function (it) { it.done = done; }); }
   /** Removes an action item from its meeting (or the loose list). The phone drops it on its next sync. */
   async function deleteItem(path, id) {
     var f = state.files.get(path);
@@ -3062,12 +3111,183 @@ if (typeof module !== "undefined" && module.exports) {
     try {
       await putFile(LOOSE, arr, f ? f.sha : null, "action items");
       toast("Added");
-      return true;
+      return item.id;
     } catch (e) {
       if (e.status === 409) { await load(); toast("Action items changed on the phone and were reloaded. Try again.", true); }
       else toast(e.message || "Couldn’t save.", true);
       return false;
     }
+  }
+
+  // ----- Today's focus (focus.json: {day: "YYYY-MM-DD", items: [item ids]}) -----
+  var writeChain = Promise.resolve();
+  /** Runs saves one after another so each uses the sha the previous one returned. */
+  function queued(fn) { var p = writeChain.then(fn, fn); writeChain = p.catch(function () {}); return p; }
+  function localDay(d) { return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); }
+  /** Pinned items that still exist, in order. On a new day, finished ones drop off and unfinished ones carry over. */
+  function focusRows() {
+    var f = state.files.get(FOCUS);
+    var d = f && f.data && typeof f.data === "object" && !Array.isArray(f.data) ? f.data : {};
+    var ids = Array.isArray(d.items) ? d.items : [];
+    var byId = {};
+    allRows().forEach(function (r) { if (r.item.id) byId[r.item.id] = r; });
+    var stale = d.day !== localDay(new Date()), seen = {};
+    return ids.map(function (id) { return byId[id]; }).filter(function (r) {
+      if (!r || seen[r.item.id] || (stale && r.item.done)) return false;
+      return (seen[r.item.id] = true);
+    });
+  }
+  function focusIds() { return focusRows().map(function (r) { return r.item.id; }); }
+  function isPinned(id) { return focusIds().indexOf(id) >= 0; }
+  function saveFocus(ids) {
+    return queued(async function () {
+      var f = state.files.get(FOCUS);
+      try { await putFile(FOCUS, { day: localDay(new Date()), items: ids }, f ? f.sha : null, "today’s focus"); return true; }
+      catch (e) {
+        if (e.status === 409) { await load(); toast("Today’s focus changed elsewhere and was reloaded. Try again.", true); }
+        else toast(e.message || "Couldn’t save.", true);
+        return false;
+      }
+    });
+  }
+  /** Redraws after a pin change without losing the scroll position or an open meeting editor. */
+  function afterFocusChange() {
+    var name = route().name, y = window.scrollY;
+    if (name === "home") { renderHome(); renderSidebar(route()); }
+    else if (name === "actions" || name === "person") render();
+    else { refreshSides(); return; }
+    window.scrollTo(0, y);
+  }
+  async function togglePin(id) {
+    var ids = focusIds(), i = ids.indexOf(id);
+    if (i >= 0) ids.splice(i, 1); else ids.push(id);
+    if (await saveFocus(ids)) { toast(i >= 0 ? "Removed from Today’s focus" : "Pinned to Today’s focus"); afterFocusChange(); }
+  }
+  function pinBtn(id) {
+    if (!id) return null;
+    var on = isPinned(id);
+    return el("button", { class: "pin" + (on ? " on" : ""), type: "button", text: on ? "★" : "☆",
+      title: on ? "Remove from Today’s focus" : "Pin to Today’s focus", "aria-label": on ? "Remove from Today’s focus" : "Pin to Today’s focus",
+      onclick: function (e) { e.stopPropagation(); this.disabled = true; togglePin(id); } });
+  }
+  var TARGET_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1" fill="#fff"/></svg>';
+  function focusCard(today) {
+    var rows = focusRows();
+    var done = rows.filter(function (r) { return r.item.done; }).length;
+    var ic = el("span", { class: "focus-ic" }); ic.innerHTML = TARGET_SVG;
+    var head = el("div", { class: "focus-head" }, ic, el("h2", { text: "Today’s focus" }));
+    if (rows.length) {
+      head.append(el("div", { class: "prog" }, el("i", { style: "width:" + Math.round(done / rows.length * 100) + "%" })),
+        el("span", { class: "cnt", text: done + " of " + rows.length + " done" }));
+      if (done) head.append(el("button", { class: "btn ghost", type: "button", text: "Clear done", onclick: async function () {
+        this.disabled = true;
+        if (await saveFocus(rows.filter(function (r) { return !r.item.done; }).map(function (r) { return r.item.id; }))) afterFocusChange();
+      } }));
+    }
+    var list = el("div", { class: "flist" });
+    rows.forEach(function (r) {
+      var d = parseDue(r.item.due);
+      var row = el("div", { class: "frow" + (r.item.done ? " done" : ""), "data-id": r.item.id });
+      var grip = el("span", { class: "grip", title: "Drag to reorder", "aria-hidden": "true", text: "⋮⋮" });
+      dragToReorder(grip, row, list);
+      var note = r.item.note && String(r.item.note).trim();
+      row.append(grip, tickBox(r, row), el("div", { class: "body" },
+        el("div", { class: "task" }, r.item.task || "(no task)", note ? el("span", { class: "note-ic", title: note, text: "📝 Note" }) : null),
+        el("div", { class: "meta" }, meetingLinkOf(r))),
+        d ? el("span", { class: "pill " + dueGroup({ due: r.item.due }, today), text: shortDue(d, today) }) : null,
+        el("button", { class: "btn ghost x", type: "button", text: "✕", title: "Remove from Today’s focus", "aria-label": "Remove from Today’s focus",
+          onclick: function () { this.disabled = true; togglePin(r.item.id); } }));
+      list.append(row);
+    });
+    if (!rows.length) list.append(el("div", { class: "empty", text: "Pin items with ☆ to plan your day." }));
+
+    var pinned = {};
+    rows.forEach(function (r) { pinned[r.item.id] = true; });
+    var ideas = scopeRows(false).filter(function (r) {
+      var du = parseDue(r.item.due);
+      return r.item.id && !pinned[r.item.id] && du && dayDiff(du, today) <= 0;
+    }).sort(function (a, b) { return parseDue(a.item.due) - parseDue(b.item.due); }).slice(0, 4);
+    var sug = el("div", { class: "suggest" }, ideas.length ? el("span", { text: "Due now:" }) : null);
+    ideas.forEach(function (r) {
+      sug.append(el("button", { class: "chip", type: "button", text: "+ " + (r.item.task || "(no task)") + " · " + shortDue(parseDue(r.item.due), today),
+        onclick: function () { this.disabled = true; togglePin(r.item.id); } }));
+    });
+    var addChip = el("button", { class: "chip", type: "button", text: "+ Add a task just for today", onclick: function () {
+      var input = el("input", { type: "text", placeholder: "Task for today", "aria-label": "Task for today" });
+      var form = el("form", null, input, el("button", { class: "btn primary", type: "submit", text: "Add" }));
+      form.addEventListener("submit", async function (e) {
+        e.preventDefault();
+        var task = input.value.trim();
+        if (!task) return;
+        form.querySelectorAll("input,button").forEach(function (x) { x.disabled = true; });
+        var id = await queued(function () { return addLooseItem(task, localDay(new Date())); });
+        if (!id) { form.querySelectorAll("input,button").forEach(function (x) { x.disabled = false; }); return; }
+        var ids = focusIds(); ids.push(id);
+        await saveFocus(ids);
+        afterFocusChange();
+      });
+      addChip.replaceWith(form);
+      input.focus();
+    } });
+    sug.append(addChip);
+    return el("div", { class: "card focus" }, head, list, sug);
+  }
+  /** Drag the grip to move a focus row; the new order is saved on release. */
+  function dragToReorder(grip, row, list) {
+    grip.addEventListener("pointerdown", function (e) {
+      e.preventDefault();
+      row.classList.add("drag");
+      var before = Array.from(list.children).map(function (x) { return x.dataset.id; }).join();
+      function move(ev) {
+        var sibs = Array.from(list.querySelectorAll(".frow")).filter(function (x) { return x !== row; });
+        var next = sibs.find(function (x) { var b = x.getBoundingClientRect(); return ev.clientY < b.top + b.height / 2; });
+        if (next) { if (row.nextElementSibling !== next) list.insertBefore(row, next); }
+        else if (list.lastElementChild !== row) list.append(row);
+      }
+      async function up() {
+        window.removeEventListener("pointermove", move);
+        window.removeEventListener("pointerup", up);
+        window.removeEventListener("pointercancel", up);
+        row.classList.remove("drag");
+        var ids = Array.from(list.querySelectorAll(".frow")).map(function (x) { return x.dataset.id; });
+        if (ids.join() !== before && !(await saveFocus(ids))) afterFocusChange();
+      }
+      window.addEventListener("pointermove", move);
+      window.addEventListener("pointerup", up);
+      window.addEventListener("pointercancel", up);
+    });
+  }
+
+  /** The note area under an open action item row. Saves as you type. */
+  function noteDetails(r) {
+    var status = el("span", { class: "muted", text: "" });
+    var timer = null, value = r.item.note || "";
+    function save() {
+      timer = null;
+      var v = value.trim();
+      status.textContent = "Saving…";
+      return queued(async function () {
+        var ok = await writeItem(r.path, r.item.id, function (it) { if (v) it.note = v; else delete it.note; });
+        status.textContent = ok ? "Saved · syncs to your phone" : "Not saved";
+      });
+    }
+    var ta = el("textarea", { rows: 3, placeholder: "Add details, links or next steps…", value: value, "aria-label": "Note" });
+    ta.addEventListener("input", function () {
+      value = ta.value; grow(ta);
+      status.textContent = "Editing…";
+      clearTimeout(timer); timer = setTimeout(save, 900);
+    });
+    var box = el("div", { class: "details" }, el("label", { text: "Note" }), ta,
+      el("div", { class: "row" }, pinBtnWide(r.item.id), status));
+    box.flush = function () { if (timer) { clearTimeout(timer); return save(); } return writeChain; };
+    setTimeout(function () { grow(ta); }, 0);
+    return box;
+  }
+  function pinBtnWide(id) {
+    if (!id) return null;
+    var on = isPinned(id);
+    return el("button", { class: "btn", type: "button", text: on ? "★ In Today’s focus" : "☆ Pin to Today’s focus",
+      onclick: function () { this.disabled = true; togglePin(id); } });
   }
 
   var GROUP_LABEL = { overdue: "Overdue", today: "Today", tomorrow: "Tomorrow", later: "Later", none: "No date", done: "Done" };
@@ -3096,12 +3316,24 @@ if (typeof module !== "undefined" && module.exports) {
               var ok = await deleteItem(r.path, r.item.id);
               if (ok) { toast("Deleted"); var y = window.scrollY; rerender(); window.scrollTo(0, y); renderSidebar(route()); } else delBtn.disabled = false;
             } });
-          row.append(cb, el("div", { class: "body" },
+          var key = r.path + "#" + r.item.id, open = !!state.openNote[key];
+          var note = r.item.note && String(r.item.note).trim();
+          var details = open ? noteDetails(r) : null;
+          var body = el("div", { class: "body", title: open ? "" : "Click for notes" },
             el("div", { class: "task", text: r.item.task || "(no task)" }),
             el("div", { class: "meta" },
               r.item.owner ? el("span", { text: r.item.owner }) : null,
               r.item.due ? el("span", { class: "due " + dg, text: r.item.due }) : null,
-              r.meetingTitle ? el("a", { href: "#/meeting/" + encodeURIComponent(r.meetingId), text: r.meetingTitle }) : el("span", { text: "Added by you" }))), delBtn);
+              r.meetingTitle ? el("a", { href: "#/meeting/" + encodeURIComponent(r.meetingId), text: r.meetingTitle }) : el("span", { text: "Added by you" })),
+            !open && note ? el("div", { class: "note-line", text: "📝 " + note }) : null, details);
+          body.addEventListener("click", async function (e) {
+            if (e.target.closest("a,button,input,textarea,.details")) return;
+            if (open) { delete state.openNote[key]; await details.flush(); } else state.openNote[key] = true;
+            var y = window.scrollY; rerender(); window.scrollTo(0, y);
+            if (!open) { var t = app.querySelector(".arow.open textarea"); if (t && !note) t.focus(); }
+          });
+          if (open) row.classList.add("open");
+          row.append(cb, body, pinBtn(r.item.id), delBtn);
           return row;
         })));
     });

@@ -268,6 +268,7 @@ struct ActionItemsView: View {
                 if !meta.isEmpty {
                     Text(meta).font(.caption).foregroundStyle(.secondary)
                 }
+                noteLine(item)
             }
             Spacer(minLength: 0)
         }
@@ -275,6 +276,17 @@ struct ActionItemsView: View {
         .contentShape(Rectangle())
         .contextMenu {
             Button(role: .destructive) { store.deleteLooseItem(item.id) } label: { Label("Delete", systemImage: "trash") }
+        }
+    }
+
+    /// The note written on the website, if any, under the item.
+    @ViewBuilder private func noteLine(_ item: ActionItem) -> some View {
+        if let note = item.note?.trimmingCharacters(in: .whitespacesAndNewlines), !note.isEmpty {
+            Label(note, systemImage: "note.text")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(3)
+                .multilineTextAlignment(.leading)
         }
     }
 
@@ -304,6 +316,7 @@ struct ActionItemsView: View {
                         if !meta.isEmpty {
                             Text(meta).font(.caption).foregroundStyle(.secondary)
                         }
+                        noteLine(item)
                     }
                     Spacer(minLength: 0)
                     Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
