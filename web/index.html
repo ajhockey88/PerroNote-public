@@ -257,6 +257,11 @@ label.field > span { display: block; font-size: 13px; font-weight: 600; margin-b
 .arow .meta a { color: var(--muted); text-decoration: underline; text-decoration-color: var(--border); text-underline-offset: 2px; }
 .arow .meta a:hover { color: var(--accent); }
 .arow .body { cursor: pointer; }
+.tcard .body, .frow .body { cursor: pointer; }
+.tcard.open, .frow.open { background: color-mix(in srgb, var(--accent) 4%, var(--surface)); }
+.frow.open { align-items: flex-start; }
+.tcard .details .fgrid { grid-template-columns: 1fr; }
+.tcard .details { padding: 10px; }
 .arow.open { background: color-mix(in srgb, var(--accent) 4%, var(--surface)); }
 .details { margin: 10px 0 2px; padding: 12px 14px; background: var(--surface-2); border-radius: 12px; cursor: default; }
 .details label { display: block; font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
@@ -265,7 +270,8 @@ label.field > span { display: block; font-size: 13px; font-weight: 600; margin-b
 .details .fld { margin-bottom: 10px; min-width: 0; }
 .details .fgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 10px; }
 .details .fgrid .fld:first-child { grid-column: 1 / -1; }
-.details .due-in { display: flex; gap: 6px; }
+.details .due-in { display: flex; gap: 6px; flex-wrap: wrap; }
+.details .due-in input { flex: 1 1 130px; min-width: 0; }
 .details .due-in .btn { flex: none; padding: 6px 10px; }
 .details .hint { font-size: 12px; color: var(--muted); margin-top: 3px; }
 @media (max-width: 560px) { .details .fgrid { grid-template-columns: 1fr; } }
@@ -2317,6 +2323,7 @@ if (typeof module !== "undefined" && module.exports) {
   }
 
   // ----- Home (dashboard) -----
+  function rerenderHome() { renderHome(); renderSidebar(route()); }
   function renderHome() {
     var today = new Date();
     var name = myName();
@@ -2349,7 +2356,7 @@ if (typeof module !== "undefined" && module.exports) {
       var d = parseDue(r.item.due);
       var owner = splitOwners(r.item.owner)[0];
       var card = el("div", { class: "card tcard" + (r.item.done ? " done" : "") });
-      card.append(tickBox(r, card), el("div", { class: "body" },
+      card.append(tickBox(r, card), editableBody(r, card, rerenderHome, true,
         el("div", { class: "task", text: r.item.task || "(no task)" }),
         el("div", { class: "meta" }, owner ? avatar(canonPerson(owner, name), "sm") : null, meetingLinkOf(r),
           d ? el("span", { text: "· " + shortDue(d, today) }) : null)), pinBtn(r.item.id));
@@ -3432,7 +3439,7 @@ if (typeof module !== "undefined" && module.exports) {
       var grip = el("span", { class: "grip", title: "Drag to reorder", "aria-hidden": "true", text: "⋮⋮" });
       dragToReorder(grip, row, list);
       var note = r.item.note && String(r.item.note).trim();
-      row.append(grip, tickBox(r, row), el("div", { class: "body" },
+      row.append(grip, tickBox(r, row), editableBody(r, row, rerenderHome, false,
         el("div", { class: "task" }, r.item.task || "(no task)", note ? el("span", { class: "note-ic", title: note, text: "📝 Note" }) : null),
         el("div", { class: "meta" }, meetingLinkOf(r))),
         d ? el("span", { class: "pill " + dueGroup({ due: r.item.due }, today), text: shortDue(d, today) }) : null,
@@ -3559,6 +3566,23 @@ if (typeof module !== "undefined" && module.exports) {
       onclick: function () { this.disabled = true; togglePin(id); } });
   }
 
+  /** An item's body that opens to the edit panel when clicked. `kids` is what it shows when closed. */
+  function editableBody(r, row, rerender, showNote) {
+    var kids = Array.prototype.slice.call(arguments, 4);
+    var key = r.path + "#" + r.item.id, open = !!state.openNote[key];
+    var note = r.item.note && String(r.item.note).trim();
+    var details = open ? noteDetails(r) : null;
+    var body = el("div", { class: "body", title: open ? "" : "Click to edit" }, kids,
+      showNote && !open && note ? el("div", { class: "note-line", text: "📝 " + note }) : null, details);
+    body.addEventListener("click", async function (e) {
+      if (e.target.closest("a,button,input,textarea,.details")) return;
+      if (open) { delete state.openNote[key]; await details.flush(); } else state.openNote[key] = true;
+      var y = window.scrollY; rerender(); window.scrollTo(0, y);
+    });
+    if (open) row.classList.add("open");
+    return body;
+  }
+
   var GROUP_LABEL = { overdue: "Overdue", today: "Today", tomorrow: "Tomorrow", later: "Later", none: "No date", done: "Done" };
   /** Grouped, tickable action item rows; `rerender` redraws the current view after a tick. */
   function actionGroups(rows, rerender) {
@@ -3585,23 +3609,12 @@ if (typeof module !== "undefined" && module.exports) {
               var ok = await deleteItem(r.path, r.item.id);
               if (ok) { toast("Deleted"); var y = window.scrollY; rerender(); window.scrollTo(0, y); renderSidebar(route()); } else delBtn.disabled = false;
             } });
-          var key = r.path + "#" + r.item.id, open = !!state.openNote[key];
-          var note = r.item.note && String(r.item.note).trim();
-          var details = open ? noteDetails(r) : null;
-          var body = el("div", { class: "body", title: open ? "" : "Click to edit" },
+          var body = editableBody(r, row, rerender, true,
             el("div", { class: "task", text: r.item.task || "(no task)" }),
             el("div", { class: "meta" },
               r.item.owner ? el("span", { text: r.item.owner }) : null,
               r.item.due ? el("span", { class: "due " + dg, text: r.item.due }) : null,
-              r.meetingTitle ? el("a", { href: "#/meeting/" + encodeURIComponent(r.meetingId), text: r.meetingTitle }) : el("span", { text: "Added by you" })),
-            !open && note ? el("div", { class: "note-line", text: "📝 " + note }) : null, details);
-          body.addEventListener("click", async function (e) {
-            if (e.target.closest("a,button,input,textarea,.details")) return;
-            if (open) { delete state.openNote[key]; await details.flush(); } else state.openNote[key] = true;
-            var y = window.scrollY; rerender(); window.scrollTo(0, y);
-            if (!open) { var t = app.querySelector(".arow.open textarea"); if (t && !note) t.focus(); }
-          });
-          if (open) row.classList.add("open");
+              r.meetingTitle ? el("a", { href: "#/meeting/" + encodeURIComponent(r.meetingId), text: r.meetingTitle }) : el("span", { text: "Added by you" })));
           row.append(cb, body, pinBtn(r.item.id), delBtn);
           return row;
         })));
