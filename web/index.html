@@ -3461,10 +3461,12 @@ if (typeof module !== "undefined" && module.exports) {
     var byId = {};
     allRows().forEach(function (r) { if (r.item.id) byId[r.item.id] = r; });
     var stale = d.day !== localDay(new Date()), seen = {};
-    return ids.map(function (id) { return byId[id]; }).filter(function (r) {
+    var rows = ids.map(function (id) { return byId[id]; }).filter(function (r) {
       if (!r || seen[r.item.id] || (stale && r.item.done)) return false;
       return (seen[r.item.id] = true);
     });
+    // Finished items sink to the bottom, keeping their order among themselves.
+    return rows.filter(function (r) { return !r.item.done; }).concat(rows.filter(function (r) { return r.item.done; }));
   }
   function focusIds() { return focusRows().map(function (r) { return r.item.id; }); }
   function isPinned(id) { return focusIds().indexOf(id) >= 0; }
