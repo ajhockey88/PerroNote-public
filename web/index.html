@@ -3162,11 +3162,12 @@ if (typeof module !== "undefined" && module.exports) {
       var it = r.item, created = it.created ? new Date(it.created) : null;
       return [it.task, it.owner || "", it.due || "", parseDue(it.due), it.done ? "Done" : "Open",
         focus[it.id] ? "Yes" : "", it.note || "", r.meetingTitle || "Added by you", r.meetingTime ? new Date(r.meetingTime) : null,
-        created && !isNaN(created.getTime()) ? created : null];
+        created && !isNaN(created.getTime()) ? created : null, it.id || ""];
     });
   }
-  var EXCEL_HEAD = ["Task", "Owner", "Due", "Due date", "Status", "Today’s focus", "Note", "Meeting", "Meeting date", "Added"];
-  var EXCEL_WIDTHS = [48, 20, 26, 12, 9, 13, 48, 32, 13, 12];
+  // The table and the ID column let a Power Automate flow read the file and match rows to calendar events.
+  var EXCEL_HEAD = ["Task", "Owner", "Due", "Due date", "Status", "Today’s focus", "Note", "Meeting", "Meeting date", "Added", "ID"];
+  var EXCEL_WIDTHS = [48, 20, 26, 12, 9, 13, 48, 32, 13, 12, 34];
   /** A one-sheet .xlsx workbook, built by hand so the site needs no library. */
   function buildXlsx(rows) {
     function x(v) { return String(v).replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
@@ -3177,21 +3178,26 @@ if (typeof module !== "undefined" && module.exports) {
       if (v === null || v === "") return "";
       return '<c r="' + ref + '" t="inlineStr"' + (header ? ' s="1"' : "") + '><is><t xml:space="preserve">' + x(v) + "</t></is></c>";
     }
-    var all = [EXCEL_HEAD].concat(rows), last = col(EXCEL_HEAD.length - 1) + all.length;
+    var all = [EXCEL_HEAD].concat(rows);
+    var last = col(EXCEL_HEAD.length - 1) + Math.max(all.length, 2); // a table needs at least one row under the header
     var sheetRows = all.map(function (r, i) {
       return '<row r="' + (i + 1) + '">' + r.map(function (v, j) { return cell(v, col(j) + (i + 1), i === 0); }).join("") + "</row>";
     }).join("");
     var NS = 'xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"', RNS = 'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"';
     var head = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
     var files = [
-      ["[Content_Types].xml", head + '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>'],
+      ["[Content_Types].xml", head + '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/tables/table1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.table+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>'],
       ["_rels/.rels", head + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>'],
-      ["xl/workbook.xml", head + "<workbook " + NS + " " + RNS + '><sheets><sheet name="Action items" sheetId="1" r:id="rId1"/></sheets><definedNames><definedName name="_xlnm._FilterDatabase" localSheetId="0" hidden="1">\'Action items\'!$A$1:$' + col(EXCEL_HEAD.length - 1) + "$" + all.length + "</definedName></definedNames></workbook>"],
+      ["xl/workbook.xml", head + "<workbook " + NS + " " + RNS + '><sheets><sheet name="Action items" sheetId="1" r:id="rId1"/></sheets></workbook>'],
+      ["xl/worksheets/_rels/sheet1.xml.rels", head + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/table" Target="../tables/table1.xml"/></Relationships>'],
+      ["xl/tables/table1.xml", head + "<table " + NS + ' id="1" name="ActionItems" displayName="ActionItems" ref="A1:' + last + '"><autoFilter ref="A1:' + last + '"/><tableColumns count="' + EXCEL_HEAD.length + '">' +
+        EXCEL_HEAD.map(function (h, i) { return '<tableColumn id="' + (i + 1) + '" name="' + x(h) + '"/>'; }).join("") +
+        '</tableColumns><tableStyleInfo name="TableStyleMedium2" showFirstColumn="0" showLastColumn="0" showRowStripes="1" showColumnStripes="0"/></table>'],
       ["xl/_rels/workbook.xml.rels", head + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>'],
       ["xl/styles.xml", head + "<styleSheet " + NS + '><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="3"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/><xf numFmtId="14" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>'],
       ["xl/worksheets/sheet1.xml", head + "<worksheet " + NS + " " + RNS + '><dimension ref="A1:' + last + '"/><sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><sheetFormatPr defaultRowHeight="15"/><cols>' +
         EXCEL_WIDTHS.map(function (w, i) { return '<col min="' + (i + 1) + '" max="' + (i + 1) + '" width="' + w + '" customWidth="1"/>'; }).join("") +
-        "</cols><sheetData>" + sheetRows + '</sheetData><autoFilter ref="A1:' + last + '"/></worksheet>']
+        "</cols><sheetData>" + sheetRows + '</sheetData><tableParts count="1"><tablePart r:id="rId1"/></tableParts></worksheet>']
     ];
     return zipStore(files);
   }
