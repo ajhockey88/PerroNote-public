@@ -298,6 +298,7 @@ struct SettingsView: View {
 
                 Section {
                     NavigationLink("Note templates") { NoteTemplatesView() }
+                    NavigationLink("Tags and colors") { TagColorsView() }
                 } footer: {
                     Text("Daily stand-up notes with a section for each person are picked automatically by tag or start time.")
                 }

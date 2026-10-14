@@ -696,9 +696,10 @@ private struct MeetingRow: View {
 
     @ViewBuilder private var tagText: some View {
         if let tags = meeting.tags, !tags.isEmpty {
-            Text(tags.map { "#\($0)" }.joined(separator: " "))
+            tags.map { Text("#\($0)").foregroundColor(TagRegistry.color(for: $0)) }
+                .enumerated()
+                .reduce(Text("")) { acc, item in item.offset == 0 ? item.element : acc + Text(" ") + item.element }
                 .font(.caption)
-                .foregroundStyle(Color.accentColor)
                 .lineLimit(1)
         }
     }

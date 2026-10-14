@@ -1221,7 +1221,7 @@ if (typeof module !== "undefined" && module.exports) {
 <script id="app-script">
 "use strict";
 (function () {
-  var LOOSE = "action-items.json", RCPT_FILE = "recipients.json", FOCUS = "focus.json";
+  var LOOSE = "action-items.json", RCPT_FILE = "recipients.json", FOCUS = "focus.json", TAGS_FILE = "tags.json";
   var DEFAULT_REPO = "ajhockey88/perronote-data";
   var KEY_REPO = "perronote.repo", KEY_TOKEN = "perronote.token", KEY_SHOWDONE = "perronote.showDone";
   var KEY_NAME = "perronote.myName", KEY_RCPT = "perronote.recipients", KEY_LASTRCPT = "perronote.lastRecipient", KEY_OWNER = "perronote.ownerFilter";
@@ -1437,7 +1437,7 @@ if (typeof module !== "undefined" && module.exports) {
     await Promise.all(workers);
   }
 
-  function isDataPath(p) { return p === LOOSE || p === RCPT_FILE || p === FOCUS || p === "people.json" || /^meetings\/[^/]+\.json$/.test(p); }
+  function isDataPath(p) { return p === LOOSE || p === RCPT_FILE || p === FOCUS || p === TAGS_FILE || p === "people.json" || /^meetings\/[^/]+\.json$/.test(p); }
 
   function load() {
     if (!configured()) return Promise.resolve();
@@ -1761,6 +1761,51 @@ if (typeof module !== "undefined" && module.exports) {
       configured() ? excelPanel() : null));
     if (!configured()) setTimeout(function () { (repoIn.value ? tokIn : repoIn).focus(); }, 0);
   }
+  /** Settings: every tag with a colour picker. Colours are saved to tags.json so the phone shows the same ones. */
+  function tagColorPanel() {
+    var box = el("div", { class: "card rows" });
+    function names() {
+      var seen = {}, out = [];
+      function add(t) { t = String(t || "").trim(); if (t && !seen[lc(t)]) { seen[lc(t)] = true; out.push(t); } }
+      tagRegistry().forEach(function (r) { add(r.name); });
+      meetings().forEach(function (m) { (Array.isArray(m.data.tags) ? m.data.tags : []).forEach(add); });
+      allItemTags().forEach(add);
+      return out.sort(function (a, b) { return a.localeCompare(b); });
+    }
+    function setColor(name, color) {
+      return writeTagRegistry(function (list) {
+        var r = list.find(function (x) { return lc(x.name) === lc(name); });
+        if (r) r.color = color; else list.push({ name: name, color: color });
+      });
+    }
+    function draw() {
+      box.replaceChildren();
+      var list = names();
+      box.classList.toggle("hidden", !list.length);
+      list.forEach(function (t) {
+        var pick = el("input", { type: "color", value: tagColor(t).toLowerCase(), "aria-label": "Colour for " + t, style: "width:38px;height:30px;padding:0;border:0;background:none;flex:none" });
+        pick.addEventListener("change", async function () { if (await setColor(t, pick.value)) draw(); });
+        var inReg = tagRegistry().some(function (x) { return lc(x.name) === lc(t); });
+        box.append(el("div", { class: "lrow" }, pick, el("div", { class: "body" }, el("span", { class: "tag", style: tagStyle(t), text: t })),
+          el("div", { class: "acts" }, inReg ? el("button", { class: "btn ghost", type: "button", text: "Reset", title: "Back to the automatic colour", onclick: async function () {
+            if (await writeTagRegistry(function (l) { var i = l.findIndex(function (x) { return lc(x.name) === lc(t); }); if (i >= 0) l.splice(i, 1); })) draw();
+          } }) : null)));
+      });
+    }
+    draw();
+    var nameIn = el("input", { type: "text", placeholder: "New tag", "aria-label": "New tag name", autocomplete: "off" });
+    var colorIn = el("input", { type: "color", value: PALETTE[0].toLowerCase(), "aria-label": "Colour", style: "width:42px;height:38px;padding:0;border:0;background:none" });
+    var form = el("form", { class: "recip-form" }, nameIn, colorIn, el("button", { class: "btn", type: "submit", text: "Add" }));
+    form.addEventListener("submit", async function (e) {
+      e.preventDefault();
+      var t = nameIn.value.replace(/,/g, " ").replace(/\s+/g, " ").trim();
+      if (!t) return;
+      if (await setColor(t, colorIn.value)) { nameIn.value = ""; draw(); }
+    });
+    return el("div", { class: "card panel" }, el("h2", { text: "Tags" }),
+      el("p", { class: "small muted", style: "margin:0 0 12px", text: "Pick a colour for each tag. They’re the same on the phone and the website." }),
+      box, form, el("div", { style: "margin-top:10px" }, el("a", { class: "btn ghost", href: "#/tags", text: "Rename or remove tags" })));
+  }
   function personalPanels() {
     var nameIn = el("input", { type: "text", value: myName(), placeholder: "e.g. Alex Morgan", autocomplete: "name", "aria-label": "Your name" });
     var nameForm = el("form", { class: "card panel" },
@@ -1813,9 +1858,7 @@ if (typeof module !== "undefined" && module.exports) {
       el("h2", { text: "Email recipients" }),
       el("p", { class: "small muted", style: "margin:0 0 12px", text: "People you can pick under Share › Send to on a meeting. Shared with the phone." }),
       list, rForm, rErr);
-    var tagsPanel = el("div", { class: "card panel" },
-      el("h2", { text: "Tags" }),
-      el("a", { class: "btn", href: "#/tags", text: "Manage tags" }));
+    var tagsPanel = tagColorPanel();
     return [nameForm, rPanel, tagsPanel];
   }
 
@@ -1843,7 +1886,7 @@ if (typeof module !== "undefined" && module.exports) {
         formatDuration(d.duration) ? el("span", { text: formatDuration(d.duration) }) : null,
         open ? el("span", { class: "open-count", text: open + " open action item" + (open === 1 ? "" : "s") }) : null,
         notesOf(d) ? null : el("span", { text: "No notes yet" })),
-      Array.isArray(d.tags) && d.tags.length ? el("div", { class: "tags-row" }, d.tags.map(function (t) { return el("span", { class: "tag", text: t }); })) : null
+      Array.isArray(d.tags) && d.tags.length ? el("div", { class: "tags-row" }, d.tags.map(function (t) { return el("span", { class: "tag", style: tagStyle(t), text: t }); })) : null
     ];
   }
   function meetingCard(m) {
@@ -1957,7 +2000,7 @@ if (typeof module !== "undefined" && module.exports) {
         el("span", { text: [rowWhen(d.date, today), formatDuration(d.duration)].filter(Boolean).join(" · ") }),
         open ? el("span", { class: "open-count", text: open + " open" }) : null,
         notesOf(d) ? null : el("span", { text: "No notes yet" })),
-      Array.isArray(d.tags) && d.tags.length ? el("div", { class: "tags-row" }, d.tags.map(function (t) { return el("span", { class: "tag", text: t }); })) : null
+      Array.isArray(d.tags) && d.tags.length ? el("div", { class: "tags-row" }, d.tags.map(function (t) { return el("span", { class: "tag", style: tagStyle(t), text: t }); })) : null
     ];
   }
 
@@ -2318,7 +2361,7 @@ if (typeof module !== "undefined" && module.exports) {
               if (here === "meeting") { e.preventDefault(); refreshSides(); }
               else if (here === "meetings") { e.preventDefault(); refreshSides(); }
             } },
-            el("span", { class: "dot", style: "background:" + PALETTE[hueIndex(t, PALETTE.length)] }), el("span", { class: "nm", text: t }), el("span", { class: "n", text: String(counts[t]) }));
+            el("span", { class: "dot", style: "background:" + tagColor(t) }), el("span", { class: "nm", text: t }), el("span", { class: "n", text: String(counts[t]) }));
         })] : null),
       el("div", { class: "side-foot" },
         el("a", { class: "who", href: "#/settings", title: "Settings" }, avatar(name || "?", "lg"),
@@ -2710,7 +2753,7 @@ if (typeof module !== "undefined" && module.exports) {
     function draw(adding) {
       box.replaceChildren();
       list.forEach(function (t, i) {
-        box.append(el("span", { class: "tag tchip" }, t,
+        box.append(el("span", { class: "tag tchip", style: tagStyle(t) }, t,
           el("button", { class: "x", type: "button", "aria-label": "Remove tag " + t, title: "Remove", text: "✕",
             onclick: function () { list.splice(i, 1); save(); draw(false); } })));
       });
@@ -3377,6 +3420,26 @@ if (typeof module !== "undefined" && module.exports) {
   function queued(fn) { var p = writeChain.then(fn, fn); writeChain = p.catch(function () {}); return p; }
   function localDay(d) { return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); }
   /** Pinned items that still exist, in order. On a new day, finished ones drop off and unfinished ones carry over. */
+  /** Tag colours chosen in Settings (tags.json: [{name, color}]); other tags get a colour from their name. */
+  function tagRegistry() {
+    var f = state.files.get(TAGS_FILE);
+    return f && Array.isArray(f.data) ? f.data.filter(function (r) { return r && r.name && /^#[0-9a-f]{6}$/i.test(r.color || ""); }) : [];
+  }
+  function tagColor(name) {
+    var r = tagRegistry().find(function (x) { return lc(x.name) === lc(name); });
+    return r ? r.color : PALETTE[hueIndex(name, PALETTE.length)];
+  }
+  function tagStyle(name) { var c = tagColor(name); return "background:color-mix(in srgb, " + c + " 18%, transparent);color:" + c + ";"; }
+  async function writeTagRegistry(mutate, retried) {
+    var list = clone(tagRegistry());
+    mutate(list);
+    var f = state.files.get(TAGS_FILE);
+    try { await putFile(TAGS_FILE, list, f ? f.sha : null, "tag colours"); return true; }
+    catch (e) {
+      if (e.status === 409 && !retried) { await load(); return writeTagRegistry(mutate, true); }
+      toast(e.message || "Couldn’t save tag colours.", true); return false;
+    }
+  }
   function itemTags(item) { return Array.isArray(item && item.tags) ? item.tags.map(function (t) { return String(t).trim(); }).filter(Boolean) : []; }
   function allItemTags() {
     var seen = {}, out = [];
@@ -3384,11 +3447,11 @@ if (typeof module !== "undefined" && module.exports) {
     return out.sort(function (a, b) { return a.localeCompare(b); });
   }
   function hasTag(item, tag) { return !tag || itemTags(item).some(function (t) { return lc(t) === lc(tag); }); }
-  function tagPills(item) { return itemTags(item).map(function (t) { return el("span", { class: "itag", text: "#" + t }); }); }
+  function tagPills(item) { return itemTags(item).map(function (t) { return el("span", { class: "itag", style: tagStyle(t), text: "#" + t }); }); }
   /** A row of tag buttons ("All" plus each tag); picking one calls pick(tag or null). */
   function tagBar(current, tags, pick) {
     var bar = el("div", { class: "tagbar" }, el("button", { class: "chip" + (current ? "" : " on"), type: "button", text: "All", onclick: function () { pick(null); } }));
-    tags.forEach(function (t) { bar.append(el("button", { class: "chip" + (lc(t) === lc(current) ? " on" : ""), type: "button", text: "#" + t, onclick: function () { pick(lc(t) === lc(current) ? null : t); } })); });
+    tags.forEach(function (t) { bar.append(el("button", { class: "chip" + (lc(t) === lc(current) ? " on" : ""), type: "button", text: "#" + t, style: lc(t) === lc(current) ? "background:" + tagColor(t) + ";border-color:" + tagColor(t) + ";color:#fff" : "color:" + tagColor(t), onclick: function () { pick(lc(t) === lc(current) ? null : t); } })); });
     return bar;
   }
   function focusRows() {
@@ -3577,7 +3640,7 @@ if (typeof module !== "undefined" && module.exports) {
     function drawTags(refocus) {
       tagBox.replaceChildren();
       v.tags.forEach(function (t, i) {
-        tagBox.append(el("span", { class: "tag tchip" }, t, el("button", { class: "x", type: "button", "aria-label": "Remove tag " + t, title: "Remove", text: "✕",
+        tagBox.append(el("span", { class: "tag tchip", style: tagStyle(t) }, t, el("button", { class: "x", type: "button", "aria-label": "Remove tag " + t, title: "Remove", text: "✕",
           onclick: function () { v.tags.splice(i, 1); drawTags(); save(); } })));
       });
       var inp = el("input", { type: "text", class: "add-person sm", placeholder: "Add tag", list: tagListId, autocomplete: "off", "aria-label": "Add tag" });
@@ -3953,7 +4016,7 @@ if (typeof module !== "undefined" && module.exports) {
     if (!tags.length) nodes.push(el("div", { class: "card notice" }, el("p", { class: "muted", text: "No tags yet. Add them on a meeting, or use Select on the Meetings list." })));
     else nodes.push(el("div", { class: "card rows" }, tags.map(function (t) {
       return el("div", { class: "lrow" },
-        el("div", { class: "body" }, el("span", { class: "tag", text: t }), el("div", { class: "meta", style: "margin-top:4px", text: plural(counts[t], "meeting") })),
+        el("div", { class: "body" }, el("span", { class: "tag", style: tagStyle(t), text: t }), el("div", { class: "meta", style: "margin-top:4px", text: plural(counts[t], "meeting") })),
         el("div", { class: "acts" },
           el("button", { class: "btn", type: "button", text: "Rename", disabled: busy, onclick: function () { rename(t); } }),
           el("button", { class: "btn danger", type: "button", text: "Delete", disabled: busy, onclick: function () { del(t); } })));

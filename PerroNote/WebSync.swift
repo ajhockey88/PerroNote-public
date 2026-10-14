@@ -183,6 +183,12 @@ enum WebSync {
         }
         local["recipients.json"] = try recipientData()
         local["people.json"] = try peopleData(store)
+        if let sha = remote["tags.json"], seen["tags.json"] == nil,
+           let theirs = try? decoder.decode([TagStyle].self, from: try await download(sha)) {
+            // First time: keep what each side already has, the phone's choice winning a clash.
+            for t in theirs where !TagRegistry.isCustom(t.name) { TagRegistry.set(t.name, hex: t.color) }
+        }
+        local["tags.json"] = try encoder.encode(TagRegistry.all)
 
         // A meeting file that was synced before and is gone from GitHub was deleted on the web.
         // If GitHub has no meetings at all (a new or emptied repo), nothing is deleted; everything is sent again.
@@ -221,7 +227,9 @@ enum WebSync {
             } else if let remoteSHA {
                 // Edited on the web: bring it into the app.
                 let incoming = try await download(remoteSHA)
-                if path == "people.json" {
+                if path == "tags.json" {
+                    TagRegistry.all = try decoder.decode([TagStyle].self, from: incoming)
+                } else if path == "people.json" {
                     // Names only go one way, to the website; nothing to bring in.
                 } else if path == "recipients.json" {
                     OutlookSettings.accounts = try decoder.decode([OutlookAccount].self, from: incoming)
@@ -308,6 +316,7 @@ enum WebSync {
         if path == "action-items.json" { return try? encoder.encode(store.looseItems) }
         if path == "recipients.json" { return try? recipientData() }
         if path == "people.json" { return try? peopleData(store) }
+        if path == "tags.json" { return try? encoder.encode(TagRegistry.all) }
         let id = path.dropFirst("meetings/".count).dropLast(".json".count)
         guard let uuid = UUID(uuidString: String(id)), let m = store.meeting(uuid) else { return nil }
         let record = Record(id: m.id, title: m.title, date: m.date, duration: m.duration,

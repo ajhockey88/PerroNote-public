@@ -50,7 +50,7 @@ struct TagsView: View {
                         ForEach(all, id: \.self) { tag in
                             Button { toggle(tag) } label: {
                                 HStack {
-                                    Label(tag, systemImage: "tag")
+                                    Label { Text(tag) } icon: { Image(systemName: "tag").foregroundStyle(TagRegistry.color(for: tag)) }
                                     Spacer()
                                     if has(tag) { Image(systemName: "checkmark").foregroundStyle(Color.accentColor) }
                                 }
