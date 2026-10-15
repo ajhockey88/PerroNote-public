@@ -6,6 +6,8 @@ final class MeetingStore: ObservableObject {
     @Published private(set) var meetings: [Meeting] = []
     /// Action items you added yourself, not tied to any meeting.
     @Published private(set) var looseItems: [ActionItem] = []
+    /// Today's focus: the action items you pinned for the day, in order. Shared with the website as focus.json.
+    @Published var focus = FocusState.load()
 
     private static var documents: URL {
         FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
@@ -78,6 +80,71 @@ final class MeetingStore: ObservableObject {
     /// Every action item: from all meetings' notes, then the ones you added yourself.
     var allActionItems: [ActionItem] {
         meetings.flatMap { $0.notes?.actionItems ?? [] } + looseItems
+    }
+
+    // MARK: Editing any action item, and Today's focus
+
+    /// Changes one action item wherever it lives, in a meeting's notes or in your own list.
+    func updateActionItem(_ id: UUID, _ change: (inout ActionItem) -> Void) {
+        if let i = looseItems.firstIndex(where: { $0.id == id }) {
+            change(&looseItems[i])
+            saveLoose()
+            return
+        }
+        for m in meetings.indices {
+            if let i = meetings[m].notes?.actionItems.firstIndex(where: { $0.id == id }) {
+                let meetingID = meetings[m].id
+                update(meetingID, immediate: false) { meeting in
+                    guard var notes = meeting.notes else { return }
+                    change(&notes.actionItems[i])
+                    meeting.notes = notes
+                }
+                refreshAlerts()
+                return
+            }
+        }
+    }
+
+    func deleteActionItem(_ id: UUID) {
+        if looseItems.contains(where: { $0.id == id }) { deleteLooseItem(id) }
+        else {
+            for m in meetings {
+                if m.notes?.actionItems.contains(where: { $0.id == id }) == true {
+                    update(m.id, immediate: false) { $0.notes?.actionItems.removeAll { $0.id == id } }
+                    refreshAlerts()
+                    break
+                }
+            }
+        }
+        if focus.ids.contains(id.uuidString) { setFocus(focus.ids.filter { $0 != id.uuidString }) }
+    }
+
+    func actionItem(_ id: UUID) -> ActionItem? { allActionItems.first { $0.id == id } }
+
+    /// The pinned items that still exist. On a new day, finished ones drop off. Finished ones sit at the bottom.
+    var focusItems: [ActionItem] {
+        let stale = focus.day != FocusState.today
+        var seen = Set<String>()
+        let rows = focus.ids.compactMap { raw -> ActionItem? in
+            guard let id = UUID(uuidString: raw), seen.insert(raw.uppercased()).inserted,
+                  let item = actionItem(id), !(stale && item.done) else { return nil }
+            return item
+        }
+        return rows.filter { !$0.done } + rows.filter(\.done)
+    }
+
+    func isPinned(_ id: UUID) -> Bool { focusItems.contains { $0.id == id } }
+
+    func setFocus(_ ids: [String]) {
+        focus = FocusState(day: FocusState.today, ids: ids)
+        focus.save()
+        scheduleSync()
+    }
+
+    func togglePin(_ id: UUID) {
+        var ids = focusItems.map { $0.id.uuidString }
+        if let i = ids.firstIndex(of: id.uuidString) { ids.remove(at: i) } else { ids.append(id.uuidString) }
+        setFocus(ids)
     }
 
     func addLooseItem(_ item: ActionItem) {
@@ -167,6 +234,12 @@ final class MeetingStore: ObservableObject {
             if m.notes != record.notes { m.notes = record.notes; m.notesEdited = true }
             if let names = record.attendeeNames, m.attendeeNames != names { m.attendeeNames = names }
         }
+    }
+
+    /// Takes today's focus as pinned on the website.
+    func replaceFocus(_ state: FocusState) {
+        focus = state
+        state.save()
     }
 
     /// Takes your own action items as edited on the web.

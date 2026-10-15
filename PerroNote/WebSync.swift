@@ -189,6 +189,11 @@ enum WebSync {
             for t in theirs where !TagRegistry.isCustom(t.name) { TagRegistry.set(t.name, hex: t.color) }
         }
         local["tags.json"] = try encoder.encode(TagRegistry.all)
+        if let sha = remote["focus.json"], seen["focus.json"] == nil, store.focus.ids.isEmpty,
+           let theirs = try? decoder.decode(FocusState.self, from: try await download(sha)) {
+            store.replaceFocus(theirs)   // first time: keep what is already pinned on the website
+        }
+        local["focus.json"] = try encoder.encode(store.focus)
 
         // A meeting file that was synced before and is gone from GitHub was deleted on the web.
         // If GitHub has no meetings at all (a new or emptied repo), nothing is deleted; everything is sent again.
@@ -227,7 +232,9 @@ enum WebSync {
             } else if let remoteSHA {
                 // Edited on the web: bring it into the app.
                 let incoming = try await download(remoteSHA)
-                if path == "tags.json" {
+                if path == "focus.json" {
+                    store.replaceFocus(try decoder.decode(FocusState.self, from: incoming))
+                } else if path == "tags.json" {
                     TagRegistry.all = try decoder.decode([TagStyle].self, from: incoming)
                 } else if path == "people.json" {
                     // Names only go one way, to the website; nothing to bring in.
@@ -317,6 +324,7 @@ enum WebSync {
         if path == "recipients.json" { return try? recipientData() }
         if path == "people.json" { return try? peopleData(store) }
         if path == "tags.json" { return try? encoder.encode(TagRegistry.all) }
+        if path == "focus.json" { return try? encoder.encode(store.focus) }
         let id = path.dropFirst("meetings/".count).dropLast(".json".count)
         guard let uuid = UUID(uuidString: String(id)), let m = store.meeting(uuid) else { return nil }
         let record = Record(id: m.id, title: m.title, date: m.date, duration: m.duration,

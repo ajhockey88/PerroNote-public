@@ -17,6 +17,7 @@ struct ActionItemsView: View {
     @State private var pickingDay = false
     @State private var pickedDay = Date()
     @State private var adding = false
+    @State private var editing: UUID?
 
     private var filtering: Bool { person != nil || dateFilter != .all || tagFilter != nil }
 
@@ -112,6 +113,7 @@ struct ActionItemsView: View {
     private var list: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
+                FocusCard()
                 if groups.isEmpty && loose.isEmpty {
                     VStack(spacing: 8) {
                         Image(systemName: "checklist").font(.largeTitle).foregroundStyle(.secondary)
@@ -150,6 +152,16 @@ struct ActionItemsView: View {
             .padding(.bottom, 90)
         }
         .sheet(isPresented: $pickingDay) { dayPicker }
+        .sheet(item: Binding(get: { editing.map { EditID(id: $0) } }, set: { editing = $0?.id })) { ActionItemEditor(itemID: $0.id) }
+    }
+
+    private func pinButton(_ item: ActionItem) -> some View {
+        Button { store.togglePin(item.id) } label: {
+            Image(systemName: store.isPinned(item.id) ? "star.fill" : "star")
+                .foregroundStyle(store.isPinned(item.id) ? Color.accentColor : Color.secondary)
+        }
+        .buttonStyle(.borderless)
+        .accessibilityLabel(store.isPinned(item.id) ? "Remove from Today\u{2019}s focus" : "Pin to Today\u{2019}s focus")
     }
 
     /// A titled group of rows on a rounded card, like a grouped list section.
@@ -260,17 +272,24 @@ struct ActionItemsView: View {
                     .foregroundStyle(item.done ? Color.green : Color.secondary)
             }
             .buttonStyle(.borderless)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(item.task)
-                    .strikethrough(item.done)
-                    .foregroundStyle(item.done ? .secondary : .primary)
-                let meta = [item.owner, item.due.map { "due \($0)" }].compactMap { $0 }.joined(separator: " · ")
-                if !meta.isEmpty {
-                    Text(meta).font(.caption).foregroundStyle(.secondary)
+            Button { editing = item.id } label: {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(item.task)
+                        .strikethrough(item.done)
+                        .foregroundStyle(item.done ? .secondary : .primary)
+                        .multilineTextAlignment(.leading)
+                    TagPills(item: item)
+                    let meta = [item.owner, item.due.map { "due \($0)" }].compactMap { $0 }.joined(separator: " · ")
+                    if !meta.isEmpty {
+                        Text(meta).font(.caption).foregroundStyle(.secondary)
+                    }
+                    noteLine(item)
                 }
-                noteLine(item)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
             }
-            Spacer(minLength: 0)
+            .buttonStyle(.plain)
+            pinButton(item)
         }
         .padding(.horizontal, 12).padding(.vertical, 10)
         .contentShape(Rectangle())
@@ -305,25 +324,30 @@ struct ActionItemsView: View {
             }
             .buttonStyle(.borderless)
 
-            NavigationLink(value: meeting.id) {
-                HStack {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(item.task.isEmpty ? "(empty)" : item.task)
-                            .strikethrough(item.done)
-                            .foregroundStyle(item.done ? .secondary : .primary)
-                            .multilineTextAlignment(.leading)
-                        let meta = [item.owner, item.due.map { "due \($0)" }].compactMap { $0 }.joined(separator: " · ")
-                        if !meta.isEmpty {
-                            Text(meta).font(.caption).foregroundStyle(.secondary)
-                        }
-                        noteLine(item)
+            Button { editing = item.id } label: {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(item.task.isEmpty ? "(empty)" : item.task)
+                        .strikethrough(item.done)
+                        .foregroundStyle(item.done ? .secondary : .primary)
+                        .multilineTextAlignment(.leading)
+                    TagPills(item: item)
+                    let meta = [item.owner, item.due.map { "due \($0)" }].compactMap { $0 }.joined(separator: " · ")
+                    if !meta.isEmpty {
+                        Text(meta).font(.caption).foregroundStyle(.secondary)
                     }
-                    Spacer(minLength: 0)
-                    Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
+                    noteLine(item)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            pinButton(item)
+            NavigationLink(value: meeting.id) {
+                Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
+                    .padding(.vertical, 6).padding(.leading, 6)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Open meeting")
         }
         .padding(.horizontal, 12).padding(.vertical, 10)
     }
