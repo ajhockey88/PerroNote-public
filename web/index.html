@@ -2394,7 +2394,7 @@ if (typeof module !== "undefined" && module.exports) {
       else if (diff <= 7) cols.soon.push(r);
     });
     Object.keys(cols).forEach(function (k) {
-      cols[k].sort(function (a, b) { return (!!a.item.done - !!b.item.done) || (untagged(a) - untagged(b)) || (parseDue(a.item.due) - parseDue(b.item.due)) || (b.meetingTime - a.meetingTime); });
+      cols[k].sort(function (a, b) { return (!!a.item.done - !!b.item.done) || (noDue(a) - noDue(b)) || (untagged(a) - untagged(b)) || (parseDue(a.item.due) - parseDue(b.item.due)) || (b.meetingTime - a.meetingTime); });
     });
 
     function bigStat(cls, n, label, ic, onclick) {
@@ -3445,7 +3445,13 @@ if (typeof module !== "undefined" && module.exports) {
   }
   function untagged(r) { return itemTags(r.item || r).length ? 0 : 1; }
   /** Tagged items first, untagged ones at the bottom, otherwise keeping the order they were in. */
-  function tagFirst(rows) { return rows.filter(function (r) { return !untagged(r); }).concat(rows.filter(untagged)); }
+  function noDue(r) { return parseDue((r.item || r).due) ? 1 : 0; }
+  /** Items with no due date first, then tagged ones, then untagged ones; otherwise keeping the order they were in. */
+  function tagFirst(rows) {
+    return rows.map(function (r, i) { return { r: r, i: i }; })
+      .sort(function (a, b) { return (noDue(a.r) - noDue(b.r)) || (untagged(a.r) - untagged(b.r)) || (a.i - b.i); })
+      .map(function (x) { return x.r; });
+  }
   /** The tags typed on the item itself. */
   function ownTags(item) { return Array.isArray(item && item.tags) ? item.tags.map(function (t) { return String(t).trim(); }).filter(Boolean) : []; }
   /** Tags the item gets from its meeting. */
@@ -3720,8 +3726,10 @@ if (typeof module !== "undefined" && module.exports) {
   /** Grouped, tickable action item rows; `rerender` redraws the current view after a tick. */
   function actionGroups(rows, rerender) {
     var today = new Date();
-    return groupItems(rows, today).map(function (g) {
-      g.rows = tagFirst(g.rows);
+    var groups = groupItems(rows, today).map(function (g) { g.rows = tagFirst(g.rows); return g; });
+    // Items with no date go to the top, above Overdue; finished ones stay last.
+    groups = groups.filter(function (g) { return g.key === "none"; }).concat(groups.filter(function (g) { return g.key !== "none"; }));
+    return groups.map(function (g) {
       return el("div", { class: "group " + g.key },
         el("h2", null, GROUP_LABEL[g.key], el("span", { class: "count", text: String(g.rows.length) })),
         el("div", { class: "card rows" }, g.rows.map(function (r) {

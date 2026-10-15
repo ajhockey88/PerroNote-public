@@ -126,9 +126,10 @@ final class MeetingStore: ObservableObject {
         meetings.first { $0.notes?.actionItems.contains { $0.id == id } == true }?.tags ?? []
     }
 
-    /// Items with a tag first, items without one at the bottom, otherwise in the order they came.
+    /// Items with no due date first, then tagged ones, then untagged ones, otherwise in the order they came.
     func tagsFirst(_ items: [ActionItem]) -> [ActionItem] {
-        items.filter { !tags(for: $0).isEmpty } + items.filter { tags(for: $0).isEmpty }
+        func rank(_ item: ActionItem) -> Int { (item.dueDate == nil ? 0 : 2) + (tags(for: item).isEmpty ? 1 : 0) }
+        return items.enumerated().sorted { rank($0.element) == rank($1.element) ? $0.offset < $1.offset : rank($0.element) < rank($1.element) }.map(\.element)
     }
 
     /// The item's own tags plus its meeting's tags, without repeats.
