@@ -1,7 +1,7 @@
 import Foundation
 
 /// Today's focus as shared with the website: the day it was set and the pinned item ids in order.
-struct FocusState: Codable, Equatable {
+struct TodayFocus: Codable, Equatable {
     var day: String
     var ids: [String]
 
@@ -16,9 +16,9 @@ struct FocusState: Codable, Equatable {
         return f.string(from: Date())
     }
 
-    static func load() -> FocusState {
+    static func load() -> TodayFocus {
         guard let data = UserDefaults.standard.data(forKey: key),
-              let state = try? JSONDecoder().decode(FocusState.self, from: data) else { return FocusState(day: today, ids: []) }
+              let state = try? JSONDecoder().decode(TodayFocus.self, from: data) else { return TodayFocus(day: today, ids: []) }
         return state
     }
 

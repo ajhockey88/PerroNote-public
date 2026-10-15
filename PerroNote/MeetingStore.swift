@@ -7,7 +7,7 @@ final class MeetingStore: ObservableObject {
     /// Action items you added yourself, not tied to any meeting.
     @Published private(set) var looseItems: [ActionItem] = []
     /// Today's focus: the action items you pinned for the day, in order. Shared with the website as focus.json.
-    @Published var focus = FocusState.load()
+    @Published var focus = TodayFocus.load()
 
     private static var documents: URL {
         FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
@@ -135,7 +135,7 @@ final class MeetingStore: ObservableObject {
 
     /// The pinned items that still exist. On a new day, finished ones drop off. Finished ones sit at the bottom.
     var focusItems: [ActionItem] {
-        let stale = focus.day != FocusState.today
+        let stale = focus.day != TodayFocus.today
         var seen = Set<String>()
         let rows = focus.ids.compactMap { raw -> ActionItem? in
             guard let id = UUID(uuidString: raw), seen.insert(raw.uppercased()).inserted,
@@ -148,7 +148,7 @@ final class MeetingStore: ObservableObject {
     func isPinned(_ id: UUID) -> Bool { focusItems.contains { $0.id == id } }
 
     func setFocus(_ ids: [String]) {
-        focus = FocusState(day: FocusState.today, ids: ids)
+        focus = TodayFocus(day: TodayFocus.today, ids: ids)
         focus.save()
         scheduleSync()
     }
@@ -249,7 +249,7 @@ final class MeetingStore: ObservableObject {
     }
 
     /// Takes today's focus as pinned on the website.
-    func replaceFocus(_ state: FocusState) {
+    func replaceFocus(_ state: TodayFocus) {
         focus = state
         state.save()
     }
