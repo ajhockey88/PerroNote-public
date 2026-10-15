@@ -126,6 +126,11 @@ final class MeetingStore: ObservableObject {
         meetings.first { $0.notes?.actionItems.contains { $0.id == id } == true }?.tags ?? []
     }
 
+    /// Items with a tag first, items without one at the bottom, otherwise in the order they came.
+    func tagsFirst(_ items: [ActionItem]) -> [ActionItem] {
+        items.filter { !tags(for: $0).isEmpty } + items.filter { tags(for: $0).isEmpty }
+    }
+
     /// The item's own tags plus its meeting's tags, without repeats.
     func tags(for item: ActionItem) -> [String] {
         var seen = Set<String>(), out: [String] = []
@@ -142,7 +147,7 @@ final class MeetingStore: ObservableObject {
                   let item = actionItem(id), !(stale && item.done) else { return nil }
             return item
         }
-        return rows.filter { !$0.done } + rows.filter(\.done)
+        return tagsFirst(rows.filter { !$0.done }) + tagsFirst(rows.filter(\.done))
     }
 
     func isPinned(_ id: UUID) -> Bool { focusItems.contains { $0.id == id } }

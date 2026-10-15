@@ -38,9 +38,9 @@ struct ActionItemsView: View {
     /// Items you added yourself that fit the filters. They have no meeting or tags, so a tag filter hides them.
     private var loose: [ActionItem] {
         guard tagFilter == nil else { return [] }
-        return store.looseItems.filter { item in
+        return store.tagsFirst(store.looseItems.filter { item in
             (showDone || !item.done) && ownedByPick(item) && dateFilter.contains(item.created ?? .distantPast)
-        }
+        })
     }
 
     private var groups: [(meeting: Meeting, items: [ActionItem])] {
@@ -52,7 +52,7 @@ struct ActionItemsView: View {
                 (showDone || !item.done)
                     && (person.map { p in actionOwners(item).contains { isEveryoneOwner($0) || $0.caseInsensitiveCompare(p) == .orderedSame } } ?? true)
             }
-            return items.isEmpty ? nil : (meeting, items)
+            return items.isEmpty ? nil : (meeting, store.tagsFirst(items))
         }
     }
 

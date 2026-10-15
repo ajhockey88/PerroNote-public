@@ -2282,6 +2282,7 @@ if (typeof module !== "undefined" && module.exports) {
       el("a", { class: "card stat", href: "#/actions", onclick: function (e) { e.preventDefault(); showActions(); } }, el("b", { text: String(st.open) }), el("span", { text: "Open" })))];
     var rows = [];
     groupItems(scopeRows(), today).forEach(function (g) { rows = rows.concat(g.rows); });
+    rows = tagFirst(rows);
     nodes.push(el("h2", { text: "My action items" }));
     if (!name) nodes.push(el("p", { class: "small muted", style: "margin:-4px 0 10px" }, "Only items assigned to “Me”. ", el("a", { href: "#/settings", text: "Add your name" }), " to include ones with your name."));
     var shown = rows.slice(0, 8);
@@ -2393,7 +2394,7 @@ if (typeof module !== "undefined" && module.exports) {
       else if (diff <= 7) cols.soon.push(r);
     });
     Object.keys(cols).forEach(function (k) {
-      cols[k].sort(function (a, b) { return (!!a.item.done - !!b.item.done) || (parseDue(a.item.due) - parseDue(b.item.due)) || (b.meetingTime - a.meetingTime); });
+      cols[k].sort(function (a, b) { return (!!a.item.done - !!b.item.done) || (untagged(a) - untagged(b)) || (parseDue(a.item.due) - parseDue(b.item.due)) || (b.meetingTime - a.meetingTime); });
     });
 
     function bigStat(cls, n, label, ic, onclick) {
@@ -3442,6 +3443,9 @@ if (typeof module !== "undefined" && module.exports) {
       toast(e.message || "Couldn’t save tag colours.", true); return false;
     }
   }
+  function untagged(r) { return itemTags(r.item || r).length ? 0 : 1; }
+  /** Tagged items first, untagged ones at the bottom, otherwise keeping the order they were in. */
+  function tagFirst(rows) { return rows.filter(function (r) { return !untagged(r); }).concat(rows.filter(untagged)); }
   /** The tags typed on the item itself. */
   function ownTags(item) { return Array.isArray(item && item.tags) ? item.tags.map(function (t) { return String(t).trim(); }).filter(Boolean) : []; }
   /** Tags the item gets from its meeting. */
@@ -3477,7 +3481,7 @@ if (typeof module !== "undefined" && module.exports) {
       return (seen[r.item.id] = true);
     });
     // Finished items sink to the bottom, keeping their order among themselves.
-    return rows.filter(function (r) { return !r.item.done; }).concat(rows.filter(function (r) { return r.item.done; }));
+    return tagFirst(rows.filter(function (r) { return !r.item.done; })).concat(tagFirst(rows.filter(function (r) { return r.item.done; })));
   }
   function focusIds() { return focusRows().map(function (r) { return r.item.id; }); }
   function isPinned(id) { return focusIds().indexOf(id) >= 0; }
@@ -3717,6 +3721,7 @@ if (typeof module !== "undefined" && module.exports) {
   function actionGroups(rows, rerender) {
     var today = new Date();
     return groupItems(rows, today).map(function (g) {
+      g.rows = tagFirst(g.rows);
       return el("div", { class: "group " + g.key },
         el("h2", null, GROUP_LABEL[g.key], el("span", { class: "count", text: String(g.rows.length) })),
         el("div", { class: "card rows" }, g.rows.map(function (r) {
