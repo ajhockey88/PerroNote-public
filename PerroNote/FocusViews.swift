@@ -11,13 +11,13 @@ struct FocusCard: View {
 
     private var allTags: [String] {
         var seen = Set<String>(), out: [String] = []
-        for item in store.allActionItems { for t in item.tags ?? [] where seen.insert(t.lowercased()).inserted { out.append(t) } }
+        for item in store.allActionItems { for t in store.tags(for: item) where seen.insert(t.lowercased()).inserted { out.append(t) } }
         return out.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
     }
 
     private func has(_ item: ActionItem, _ tag: String?) -> Bool {
         guard let tag else { return true }
-        return (item.tags ?? []).contains { $0.caseInsensitiveCompare(tag) == .orderedSame }
+        return store.tags(for: item).contains { $0.caseInsensitiveCompare(tag) == .orderedSame }
     }
 
     private func isMine(_ item: ActionItem) -> Bool {
@@ -163,8 +163,10 @@ struct EditID: Identifiable { let id: UUID }
 /// The item's tags as small colored pills.
 struct TagPills: View {
     let item: ActionItem
+    @EnvironmentObject private var store: MeetingStore
     var body: some View {
-        if let tags = item.tags, !tags.isEmpty {
+        let tags = store.tags(for: item)
+        if !tags.isEmpty {
             FlowLayout(spacing: 4, rowSpacing: 4) {
                 ForEach(tags, id: \.self) { t in
                     Text("#\(t)").font(.caption2.weight(.semibold))
@@ -198,6 +200,11 @@ struct ActionItemEditor: View {
         return out.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
     }
 
+    /// Tags it gets from its meeting. Change those on the meeting.
+    private var fromMeeting: [String] {
+        store.meetingTags(for: itemID).filter { m in !tags.contains { $0.caseInsensitiveCompare(m) == .orderedSame } }
+    }
+
     var body: some View {
         NavigationStack {
             Form {
@@ -209,7 +216,17 @@ struct ActionItemEditor: View {
                     Toggle("Has a due date", isOn: $hasDue)
                     if hasDue { DatePicker("Due", selection: $due, displayedComponents: .date) }
                 }
-                Section("Tags") {
+                Section {
+                    if !fromMeeting.isEmpty {
+                        FlowLayout(spacing: 6, rowSpacing: 6) {
+                            ForEach(fromMeeting, id: \.self) { t in
+                                Text("#\(t)").font(.caption.weight(.semibold))
+                                    .padding(.horizontal, 9).padding(.vertical, 4)
+                                    .foregroundStyle(TagRegistry.color(for: t))
+                                    .background(TagRegistry.color(for: t).opacity(0.10), in: Capsule())
+                            }
+                        }
+                    }
                     if !tags.isEmpty {
                         FlowLayout(spacing: 6, rowSpacing: 6) {
                             ForEach(tags, id: \.self) { t in
@@ -240,6 +257,10 @@ struct ActionItemEditor: View {
                             }
                         }
                     }
+                } header: {
+                    Text("Tags")
+                } footer: {
+                    if !fromMeeting.isEmpty { Text("Faded tags come from the meeting.") }
                 }
                 Section("Note") {
                     TextEditor(text: $note).frame(minHeight: 110)
@@ -288,7 +309,8 @@ struct ActionItemEditor: View {
         newTag = ""
         guard !t.isEmpty else { return }
         t = knownTags.first { $0.caseInsensitiveCompare(t) == .orderedSame } ?? t
-        if !tags.contains(where: { $0.caseInsensitiveCompare(t) == .orderedSame }) { tags.append(t) }
+        if !tags.contains(where: { $0.caseInsensitiveCompare(t) == .orderedSame }),
+           !store.meetingTags(for: itemID).contains(where: { $0.caseInsensitiveCompare(t) == .orderedSame }) { tags.append(t) }
     }
 
     private func save() {

@@ -3103,10 +3103,12 @@ if (typeof module !== "undefined" && module.exports) {
   }
 
   // ----- Action items -----
+  var inheritedTags = new WeakMap(); // item object -> the tags of the meeting it came from
   function allRows() {
     var rows = [];
     meetings().forEach(function (m) {
       itemsOf(m.data).forEach(function (a) {
+        inheritedTags.set(a, Array.isArray(m.data.tags) ? m.data.tags : []);
         rows.push({ item: a, path: m.path, meetingTitle: m.data.title || "Untitled meeting", meetingId: m.data.id || m.path.slice(9, -5), meetingTime: meetingTime(m.data) });
       });
     });
@@ -3440,7 +3442,16 @@ if (typeof module !== "undefined" && module.exports) {
       toast(e.message || "Couldn’t save tag colours.", true); return false;
     }
   }
-  function itemTags(item) { return Array.isArray(item && item.tags) ? item.tags.map(function (t) { return String(t).trim(); }).filter(Boolean) : []; }
+  /** The tags typed on the item itself. */
+  function ownTags(item) { return Array.isArray(item && item.tags) ? item.tags.map(function (t) { return String(t).trim(); }).filter(Boolean) : []; }
+  /** Tags the item gets from its meeting. */
+  function meetingTagsOf(item) { return (inheritedTags.get(item) || []).map(function (t) { return String(t).trim(); }).filter(Boolean); }
+  /** Its own tags plus its meeting's tags. */
+  function itemTags(item) {
+    var seen = {}, out = [];
+    ownTags(item).concat(meetingTagsOf(item)).forEach(function (t) { if (!seen[lc(t)]) { seen[lc(t)] = true; out.push(t); } });
+    return out;
+  }
   function allItemTags() {
     var seen = {}, out = [];
     allRows().forEach(function (r) { itemTags(r.item).forEach(function (t) { if (!seen[lc(t)]) { seen[lc(t)] = true; out.push(t); } }); });
@@ -3598,7 +3609,7 @@ if (typeof module !== "undefined" && module.exports) {
   function noteDetails(r) {
     var status = el("span", { class: "muted", text: "" });
     var timer = null;
-    var v = { task: r.item.task || "", owner: r.item.owner || "", due: r.item.due || "", note: r.item.note || "", tags: itemTags(r.item) };
+    var v = { task: r.item.task || "", owner: r.item.owner || "", due: r.item.due || "", note: r.item.note || "", tags: ownTags(r.item) };
     function save() {
       clearTimeout(timer); timer = null;
       var x = { task: v.task.trim().replace(/\s+/g, " "), owner: v.owner.trim().replace(/\s+/g, " "), due: v.due.trim(), note: v.note.trim(), tags: v.tags.slice() };
@@ -3641,6 +3652,10 @@ if (typeof module !== "undefined" && module.exports) {
     var tagListId = "itags-" + String(r.item.id).replace(/[^\w-]/g, "");
     function drawTags(refocus) {
       tagBox.replaceChildren();
+      meetingTagsOf(r.item).forEach(function (t) {
+        if (v.tags.some(function (x) { return lc(x) === lc(t); })) return;
+        tagBox.append(el("span", { class: "tag tchip", style: tagStyle(t) + "opacity:.75", title: "From the meeting. Change it on the meeting." }, t, el("span", { class: "muted small", style: "margin-left:4px", text: "meeting" })));
+      });
       v.tags.forEach(function (t, i) {
         tagBox.append(el("span", { class: "tag tchip", style: tagStyle(t) }, t, el("button", { class: "x", type: "button", "aria-label": "Remove tag " + t, title: "Remove", text: "✕",
           onclick: function () { v.tags.splice(i, 1); drawTags(); save(); } })));
@@ -3649,7 +3664,7 @@ if (typeof module !== "undefined" && module.exports) {
       function commit(keep) {
         var t = inp.value.replace(/,/g, " ").replace(/\s+/g, " ").trim();
         inp.value = "";
-        if (!t || v.tags.some(function (x) { return lc(x) === lc(t); })) return;
+        if (!t || v.tags.some(function (x) { return lc(x) === lc(t); }) || meetingTagsOf(r.item).some(function (x) { return lc(x) === lc(t); })) return;
         var known = allItemTags().find(function (x) { return lc(x) === lc(t); });
         v.tags.push(known || t);
         drawTags(keep); save();

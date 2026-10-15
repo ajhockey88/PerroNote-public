@@ -121,6 +121,18 @@ final class MeetingStore: ObservableObject {
 
     func actionItem(_ id: UUID) -> ActionItem? { allActionItems.first { $0.id == id } }
 
+    /// The tags an item gets from the meeting it came from. Items you added yourself have none.
+    func meetingTags(for id: UUID) -> [String] {
+        meetings.first { $0.notes?.actionItems.contains { $0.id == id } == true }?.tags ?? []
+    }
+
+    /// The item's own tags plus its meeting's tags, without repeats.
+    func tags(for item: ActionItem) -> [String] {
+        var seen = Set<String>(), out: [String] = []
+        for t in (item.tags ?? []) + meetingTags(for: item.id) where seen.insert(t.lowercased()).inserted { out.append(t) }
+        return out
+    }
+
     /// The pinned items that still exist. On a new day, finished ones drop off. Finished ones sit at the bottom.
     var focusItems: [ActionItem] {
         let stale = focus.day != FocusState.today
