@@ -334,6 +334,17 @@ final class MeetingStore: ObservableObject {
     func process(_ id: UUID, regenerateTranscript: Bool = false, voiceCount: Int? = nil,
                  template: NoteTemplate? = nil, standardNotes: Bool = false) async {
         guard let m = meeting(id), !m.isBusy else { return }
+        // One meeting is transcribed at a time, so you can keep recording while an earlier one is still being processed.
+        update(id) { $0.status = .transcribing; $0.errorMessage = nil }
+        await ProcessingGate.shared.enter()
+        await processNow(id, regenerateTranscript: regenerateTranscript, voiceCount: voiceCount,
+                         template: template, standardNotes: standardNotes)
+        await ProcessingGate.shared.leave()
+    }
+
+    private func processNow(_ id: UUID, regenerateTranscript: Bool, voiceCount: Int?,
+                            template: NoteTemplate?, standardNotes: Bool) async {
+        guard let m = meeting(id) else { return }
 
         if (m.transcript ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || regenerateTranscript {
             update(id) { $0.status = .transcribing; $0.errorMessage = nil }

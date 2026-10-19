@@ -6,6 +6,7 @@ struct MeetingListView: View {
     @EnvironmentObject private var store: MeetingStore
     @State private var showRecorder = false
     @State private var showSettings = false
+    @State private var searchingTranscripts = false
     @State private var showDatePicker = false
     @State private var query = ""
     @State private var filter: DateFilter = .all
@@ -94,6 +95,9 @@ struct MeetingListView: View {
             .toolbar(.hidden, for: .navigationBar)
         }
         .fullScreenCover(isPresented: $showRecorder) { RecordingView() }
+        .sheet(isPresented: $searchingTranscripts) {
+            TranscriptSearchView { id in path.append(id) }
+        }
         .sheet(isPresented: $askingAll) { AskMeetingView(meeting: nil) }
         .sheet(item: $tagging) { TagsView(meetingID: $0.id) }
         .fileImporter(isPresented: $importing, allowedContentTypes: [.audio, .audiovisualContent]) { result in
@@ -287,6 +291,9 @@ struct MeetingListView: View {
             }
             .disabled(importBusy)
             .accessibilityLabel("Import a recording")
+
+            Button { searchingTranscripts = true } label: { Image(systemName: "text.magnifyingglass") }
+                .accessibilityLabel("Search transcripts")
 
             NavigationLink(value: PeopleRoute()) { Image(systemName: "person.2") }
                 .accessibilityLabel("People")
