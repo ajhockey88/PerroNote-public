@@ -90,13 +90,14 @@ struct MeetingListView: View {
             .coordinateSpace(name: PageSwipeZones.space)
             .onPreferenceChange(PageSwipeZones.self) { noSwipeZones = $0 }
             .navigationDestination(for: UUID.self) { MeetingDetailView(id: $0) }
+            .navigationDestination(for: TranscriptRoute.self) { TranscriptScreen(id: $0.id, focusLine: $0.line, terms: $0.terms) }
             .navigationDestination(for: PeopleRoute.self) { _ in PeopleView() }
             .navigationDestination(for: PersonRoute.self) { PersonView(name: $0.name) }
             .toolbar(.hidden, for: .navigationBar)
         }
         .fullScreenCover(isPresented: $showRecorder) { RecordingView() }
         .sheet(isPresented: $searchingTranscripts) {
-            TranscriptSearchView { id in path.append(id) }
+            TranscriptSearchView { route in path.append(route) }
         }
         .sheet(isPresented: $askingAll) { AskMeetingView(meeting: nil) }
         .sheet(item: $tagging) { TagsView(meetingID: $0.id) }

@@ -926,6 +926,10 @@ func exportFileName(_ title: String, fallback: String, ext: String) -> String {
 /// The full transcript, opened from the document button on a meeting.
 struct TranscriptScreen: View {
     let id: UUID
+    /// A line to scroll to and flash, and the words to highlight in it, when opened from the transcript search.
+    var focusLine: UUID? = nil
+    var terms: [String] = []
+    @State private var flash: UUID?
     @EnvironmentObject private var store: MeetingStore
     @StateObject private var player = AudioPlayer()
     @State private var playingLine: UUID?
@@ -1037,6 +1041,8 @@ struct TranscriptScreen: View {
     private func content(_ meeting: Meeting) -> some View {
         let lines = meeting.hasVoices ? (meeting.lines ?? []) : (meeting.timeline ?? [])
         if !lines.isEmpty {
+            ScrollViewReader { proxy in
+            VStack(alignment: .leading, spacing: paper ? 0 : 14) {
             ForEach(lines) { line in
                 VStack(alignment: .leading, spacing: paper ? 0 : 2) {
                     HStack {
@@ -1068,10 +1074,24 @@ struct TranscriptScreen: View {
                         }
                     }
                     .snapToRules(rp)
-                    Text(line.text).textSelection(.enabled)
+                    Text(terms.isEmpty ? AttributedString(line.text) : TranscriptSearch.highlight(line.text, terms))
+                        .textSelection(.enabled)
                         .onRules(.body, pitch: rp)
                         .snapToRules(rp)
                 }
+                .padding(.vertical, flash == line.id ? 4 : 0)
+                .background(flash == line.id ? Color.yellow.opacity(0.25) : Color.clear, in: RoundedRectangle(cornerRadius: 6))
+                .id(line.id)
+            }
+            }
+            .onAppear {
+                guard let target = focusLine else { return }
+                flash = target
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                    withAnimation { proxy.scrollTo(target, anchor: .center) }
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 3) { withAnimation { flash = nil } }
+            }
             }
         } else if let transcript = meeting.transcript, !transcript.isEmpty {
             Text(transcript).textSelection(.enabled).onRules(.body, pitch: rp)

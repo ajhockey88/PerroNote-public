@@ -1,9 +1,17 @@
 import SwiftUI
 
 /// Finds words in every meeting's transcript by plain text matching on the phone. Nothing is sent anywhere and no AI is used.
+/// Opens a meeting's transcript, scrolled to a line with the searched words highlighted.
+struct TranscriptRoute: Hashable {
+    let id: UUID
+    var line: UUID? = nil
+    var terms: [String] = []
+}
+
 enum TranscriptSearch {
     struct Hit: Identifiable {
         let id = UUID()
+        let lineID: UUID?
         let speaker: String?
         let at: Double?
         let text: String
@@ -32,21 +40,37 @@ enum TranscriptSearch {
         var out: [Result] = []
         for meeting in meetings.sorted(by: { $0.date > $1.date }) {
             var hits: [Hit] = []
-            if let lines = meeting.lines, !lines.isEmpty {
-                for line in lines where matches(line.text, words) {
-                    let name = line.speaker.flatMap { id in meeting.voices?.first { $0.id == id }?.label }
-                    hits.append(Hit(speaker: name, at: line.start, text: line.text))
+            // The same lines the transcript screen shows.
+            let shown = meeting.hasVoices ? (meeting.lines ?? []) : (meeting.timeline ?? [])
+            if !shown.isEmpty {
+                for line in shown where matches(line.text, words) {
+                    let name = line.speaker != nil ? meeting.label(for: line.speaker) : nil
+                    hits.append(Hit(lineID: line.id, speaker: name, at: line.start, text: line.text))
                 }
             } else if let transcript = meeting.transcript, !transcript.isEmpty {
                 // No separated voices: look sentence by sentence.
                 let sentences = transcript.components(separatedBy: CharacterSet(charactersIn: ".?!\n"))
                 for s in sentences where matches(s, words) {
-                    hits.append(Hit(speaker: nil, at: nil, text: s.trimmingCharacters(in: .whitespacesAndNewlines)))
+                    hits.append(Hit(lineID: nil, speaker: nil, at: nil, text: s.trimmingCharacters(in: .whitespacesAndNewlines)))
                 }
             }
             if !hits.isEmpty { out.append(Result(meeting: meeting, hits: hits)) }
         }
         return out
+    }
+
+    /// The whole text with every searched word highlighted.
+    static func highlight(_ text: String, _ words: [String]) -> AttributedString {
+        var attributed = AttributedString(text)
+        for w in words where !w.isEmpty {
+            var from = attributed.startIndex
+            while from < attributed.endIndex,
+                  let r = attributed[from...].range(of: w, options: options) {
+                attributed[r].backgroundColor = .yellow.opacity(0.5)
+                from = r.upperBound
+            }
+        }
+        return attributed
     }
 
     /// A short piece of the line around the first match, with every searched word highlighted.
@@ -73,7 +97,7 @@ enum TranscriptSearch {
 
 /// Search every transcript. Tap a result to open that meeting.
 struct TranscriptSearchView: View {
-    var onOpen: (UUID) -> Void
+    var onOpen: (TranscriptRoute) -> Void
     @EnvironmentObject private var store: MeetingStore
     @Environment(\.dismiss) private var dismiss
     @State private var query = ""
@@ -95,7 +119,7 @@ struct TranscriptSearchView: View {
                 ForEach(found) { result in
                     Section {
                         ForEach(result.hits.prefix(5)) { hit in
-                            Button { onOpen(result.meeting.id); dismiss() } label: {
+                            Button { onOpen(TranscriptRoute(id: result.meeting.id, line: hit.lineID, terms: words)); dismiss() } label: {
                                 VStack(alignment: .leading, spacing: 3) {
                                     if hit.speaker != nil || hit.at != nil {
                                         Text([hit.speaker, hit.at.map { formatDuration($0) }].compactMap { $0 }.joined(separator: " \u{00B7} "))
@@ -106,7 +130,7 @@ struct TranscriptSearchView: View {
                             }
                         }
                         if result.hits.count > 5 {
-                            Button { onOpen(result.meeting.id); dismiss() } label: {
+                            Button { onOpen(TranscriptRoute(id: result.meeting.id, terms: words)); dismiss() } label: {
                                 Text("+ \(result.hits.count - 5) more in this meeting").font(.footnote)
                             }
                         }
