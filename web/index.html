@@ -3333,6 +3333,12 @@ if (typeof module !== "undefined" && module.exports) {
     if (done) toast("Synced " + plural(done, "change") + " made in Work mode" + (left ? "; " + left + " will try again" : ""));
     render();
   }
+  /** The offline copy of the page (sw.js) checks this to decide whether to skip the network. */
+  function shareWorkMode() { return idb("readwrite", function (st) { return st.put(workMode(), "workMode"); }).catch(function () { /* ignore */ }); }
+  if (window.indexedDB) shareWorkMode();
+  if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost")) {
+    navigator.serviceWorker.register("sw.js").catch(function () { /* the site still works online */ });
+  }
   async function setWorkMode(on) {
     if (on === workMode()) return;
     if (on) {
@@ -3342,9 +3348,11 @@ if (typeof module !== "undefined" && module.exports) {
       }
       await saveSnapshot(true);
       lsSet(KEY_WORK, "1");
+      await shareWorkMode();
       toast("Work mode on. Nothing is sent to or read from GitHub.");
     } else {
       lsDel(KEY_WORK);
+      await shareWorkMode();
       state.lastLoad = 0;
       toast("Work mode off. Syncing…");
       await load();
@@ -3360,7 +3368,7 @@ if (typeof module !== "undefined" && module.exports) {
     var status = on
       ? "Working from the notes saved " + (state.lastLoad ? new Date(state.lastLoad).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "in this browser") + ". " +
         (n ? plural(n, "change") + " made here will sync when you turn it off." : "Changes you make stay in this browser until you turn it off.")
-      : "When on, this browser doesn’t send anything to GitHub or read from it. Turning it on gets the latest notes one last time; your edits wait here and sync, merged with the phone’s, when you turn it off.";
+      : "When on, this browser doesn’t send anything to GitHub or read from it. Turning it on gets the latest notes one last time; your edits wait here and sync, merged with the phone’s, when you turn it off. The site itself also opens from this browser’s copy.";
     return el("div", { class: "card panel" }, el("h2", { text: "Work mode" }),
       el("p", { class: "small muted", style: "margin:0 0 12px", text: status }), label);
   }
