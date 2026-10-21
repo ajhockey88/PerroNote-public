@@ -1626,7 +1626,7 @@ if (typeof module !== "undefined" && module.exports) {
   });
   function doRefresh() {
     if (!configured()) return;
-    if (workMode()) { toast("Work mode is on, so nothing syncs. Turn it off in Settings to sync."); return; }
+    if (workMode()) { syncOnce(); return; }
     load().then(function () { if (!state.error) toast("Up to date"); });
   }
   document.getElementById("refreshBtn").addEventListener("click", doRefresh);
@@ -2353,7 +2353,7 @@ if (typeof module !== "undefined" && module.exports) {
     }
     var onList = r.name === "meetings" || r.name === "meeting";
     var name = myName();
-    var refresh = el("button", { class: "icon-btn refresh-btn" + (state.loading ? " spin" : ""), type: "button", title: "Refresh", "aria-label": "Refresh", onclick: doRefresh }, icon("refresh"));
+    var refresh = el("button", { class: "icon-btn refresh-btn" + (state.loading ? " spin" : ""), type: "button", title: lsGet(KEY_WORK) === "1" ? "Sync now (Work mode)" : "Refresh", "aria-label": lsGet(KEY_WORK) === "1" ? "Sync now" : "Refresh", onclick: doRefresh }, icon("refresh"));
     side.replaceChildren(
       el("a", { class: "wordmark", href: "#/" }, el("img", { class: "logo", src: "icon.png", alt: "", width: "30", height: "30" }),
         el("span", null, "Perro", el("span", { class: "note", text: "Note" }))),
@@ -3207,7 +3207,25 @@ if (typeof module !== "undefined" && module.exports) {
 
   // ----- Work mode: the site doesn't talk to GitHub; it works from the notes saved in this browser -----
   var KEY_WORK = "perronote.workMode";
-  function workMode() { return lsGet(KEY_WORK) === "1"; }
+  var syncingOnce = false; // true while "Sync now" lets one sync through in Work mode
+  function workMode() { return lsGet(KEY_WORK) === "1" && !syncingOnce; }
+  /** One sync in Work mode, when you ask for it: get the latest, send your changes, then go quiet again. */
+  async function syncOnce() {
+    if (syncingOnce || lsGet(KEY_WORK) !== "1") return;
+    syncingOnce = true;
+    renderSidebar(route());
+    try {
+      await load();
+      await pushPending();
+    } finally {
+      syncingOnce = false;
+      await saveSnapshot(true);
+      renderSidebar(route());
+      if (route().name === "settings") renderSettings();
+    }
+    if (state.syncFailed || state.error) toast("Couldn’t reach GitHub. Still working from the saved notes.", true);
+    else toast("Synced. Back to Work mode.");
+  }
   /** Changes made in Work mode, waiting to sync: path -> { base: {sha, data} | null, data: obj | null (deleted) }. */
   var pending = {};
   var pendingReady = (window.indexedDB ? idb("readonly", function (st) { return st.get("pending"); }) : Promise.resolve(null))
@@ -3304,11 +3322,15 @@ if (typeof module !== "undefined" && module.exports) {
     }
     return local;
   }
-  var pushing = false;
+  var pushing = null;
   /** Sends the changes made in Work mode, merged with anything the phone changed meanwhile. */
-  async function pushPending() {
-    if (pushing || workMode()) return;
-    pushing = true;
+  function pushPending() {
+    if (pushing) return pushing;
+    if (workMode() || !Object.keys(pending).length) return Promise.resolve();
+    pushing = pushPendingNow().finally(function () { pushing = null; });
+    return pushing;
+  }
+  async function pushPendingNow() {
     var done = 0, left = 0;
     try {
       for (var path of Object.keys(pending)) {
@@ -3327,7 +3349,6 @@ if (typeof module !== "undefined" && module.exports) {
         } catch (e) { left++; }
       }
     } finally {
-      pushing = false;
       await savePending();
     }
     if (done) toast("Synced " + plural(done, "change") + " made in Work mode" + (left ? "; " + left + " will try again" : ""));
@@ -3367,10 +3388,12 @@ if (typeof module !== "undefined" && module.exports) {
     sw.addEventListener("change", async function () { sw.disabled = true; await setWorkMode(sw.checked); });
     var status = on
       ? "Working from the notes saved " + (state.lastLoad ? new Date(state.lastLoad).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "in this browser") + ". " +
-        (n ? plural(n, "change") + " made here will sync when you turn it off." : "Changes you make stay in this browser until you turn it off.")
+        (n ? plural(n, "change") + " made here will sync when you tap Sync now or turn it off." : "Changes you make stay in this browser until you tap Sync now or turn it off.")
       : "When on, this browser doesn’t send anything to GitHub or read from it. Turning it on gets the latest notes one last time; your edits wait here and sync, merged with the phone’s, when you turn it off. The site itself also opens from this browser’s copy.";
     return el("div", { class: "card panel" }, el("h2", { text: "Work mode" }),
-      el("p", { class: "small muted", style: "margin:0 0 12px", text: status }), label);
+      el("p", { class: "small muted", style: "margin:0 0 12px", text: status }),
+      el("div", { class: "btn-row" }, label,
+        on ? el("button", { class: "btn right", type: "button", text: "Sync now", title: "Get the latest and send your changes once, then go quiet again", onclick: function () { this.disabled = true; this.textContent = "Syncing…"; syncOnce(); } }) : null));
   }
 
   // ----- Excel file (kept up to date in a file you pick, e.g. in your OneDrive folder) -----
