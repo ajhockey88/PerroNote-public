@@ -1398,6 +1398,7 @@ if (typeof module !== "undefined" && module.exports) {
   }
 
   async function api(method, path, body) {
+    if (workMode()) throw new ApiError(0, "Work mode is on, so nothing is sent to or read from GitHub.");
     var opts = {
       method: method,
       cache: "no-store",
@@ -1445,6 +1446,8 @@ if (typeof module !== "undefined" && module.exports) {
     setRefreshing(true);
     state.loading = (async function () {
       try {
+        await pendingReady;
+        if (workMode()) { await loadLocal(); } else {
         if (!state.branch) {
           var info = await apiJSON("GET", "");
           state.branch = (info.data && info.data.default_branch) || "main";
@@ -1482,6 +1485,8 @@ if (typeof module !== "undefined" && module.exports) {
         state.error = null;
         state.lastLoad = Date.now();
         state.syncFailed = false;
+        saveSnapshot();
+        }
       } catch (e) {
         if (state.loaded) { state.syncFailed = true; toast(e.message || "Refresh failed.", true); }
         else state.error = e.message || String(e);
@@ -1493,6 +1498,7 @@ if (typeof module !== "undefined" && module.exports) {
       }
       afterLoad();
       syncPill();
+      if (!workMode() && state.loaded && !state.syncFailed && !state.error && Object.keys(pending).length) pushPending();
     })();
     return state.loading;
   }
@@ -1525,6 +1531,7 @@ if (typeof module !== "undefined" && module.exports) {
   }
 
   async function putFile(path, obj, sha, title) {
+    if (workMode()) return localPut(path, obj);
     var body = {
       message: "Edit " + String(title || "notes").replace(/\s+/g, " ").trim() + " on the web",
       content: utf8ToB64(JSON.stringify(obj, null, 2) + "\n")
@@ -1542,6 +1549,7 @@ if (typeof module !== "undefined" && module.exports) {
       state.files.set(path, { sha: newSha, data: obj });
     }
     excelSoon();
+    saveSnapshot();
     return newSha;
   }
 
@@ -1618,12 +1626,13 @@ if (typeof module !== "undefined" && module.exports) {
   });
   function doRefresh() {
     if (!configured()) return;
+    if (workMode()) { toast("Work mode is on, so nothing syncs. Turn it off in Settings to sync."); return; }
     load().then(function () { if (!state.error) toast("Up to date"); });
   }
   document.getElementById("refreshBtn").addEventListener("click", doRefresh);
   // Pick up changes made on the phone or another browser without a manual refresh; the screen only redraws when something changed.
   setInterval(function () {
-    if (document.visibilityState !== "visible" || !configured() || !state.loaded || state.loading || (page && page.saving)) return;
+    if (document.visibilityState !== "visible" || !configured() || workMode() || !state.loaded || state.loading || (page && page.saving)) return;
     state.quiet = { sig: filesSignature() };
     load();
   }, 60000);
@@ -1758,6 +1767,7 @@ if (typeof module !== "undefined" && module.exports) {
         el("li", { text: "Paste the token below." })),
       form,
       configured() ? personalPanels() : null,
+      configured() ? workPanel() : null,
       configured() ? excelPanel() : null));
     if (!configured()) setTimeout(function () { (repoIn.value ? tokIn : repoIn).focus(); }, 0);
   }
@@ -2205,6 +2215,7 @@ if (typeof module !== "undefined" && module.exports) {
     return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
   }
   function syncedText() {
+    if (workMode()) { var n = Object.keys(pending).length; return "Work mode" + (n ? " · " + plural(n, "change") + " to sync" : " · not syncing"); }
     if (!state.lastLoad) return state.loading ? "Syncing…" : "Not synced yet";
     var s = Math.round((Date.now() - state.lastLoad) / 1000);
     if (s < 60) return "Synced just now";
@@ -2961,11 +2972,8 @@ if (typeof module !== "undefined" && module.exports) {
     if (btn) { btn.disabled = true; btn.textContent = "Deleting…"; }
     p.saving = true; updateSaveUI();
     try {
-      var body = { message: "Delete " + String(title).replace(/\s+/g, " ").trim() + " on the web", sha: p.baseSha };
-      if (state.branch) body.branch = state.branch;
-      var res = await api("DELETE", "/contents/" + encodePath(p.path), body);
-      if (res.status === 409 || res.status === 422) throw new ApiError(409, "changed");
-      if (!res.ok && res.status !== 404) throw new ApiError(res.status, describe(res.status, res, true));
+      if (workMode()) localDelete(p.path);
+      else await deleteRemote(p.path, p.baseSha, title);
       state.files.delete(p.path);
       state.selected.delete(p.path);
       if (page === p) page = null;
@@ -3195,6 +3203,166 @@ if (typeof module !== "undefined" && module.exports) {
       else toast(e.message || "Couldn’t save.", true);
       return false;
     }
+  }
+
+  // ----- Work mode: the site doesn't talk to GitHub; it works from the notes saved in this browser -----
+  var KEY_WORK = "perronote.workMode";
+  function workMode() { return lsGet(KEY_WORK) === "1"; }
+  /** Changes made in Work mode, waiting to sync: path -> { base: {sha, data} | null, data: obj | null (deleted) }. */
+  var pending = {};
+  var pendingReady = (window.indexedDB ? idb("readonly", function (st) { return st.get("pending"); }) : Promise.resolve(null))
+    .then(function (v) { pending = v || {}; }).catch(function () { /* nothing saved */ });
+  function savePending() { return idb("readwrite", function (st) { return st.put(pending, "pending"); }).catch(function () { toast("Couldn’t save that change in this browser.", true); }); }
+  var snapTimer = null;
+  /** Keeps a copy of the latest notes in this browser, so Work mode always starts from the newest data. */
+  function saveSnapshot(now) {
+    clearTimeout(snapTimer);
+    function write() {
+      var files = [];
+      state.files.forEach(function (f, path) { files.push([path, { sha: f.sha, data: f.data }]); });
+      return idb("readwrite", function (st) { return st.put({ branch: state.branch, savedAt: state.lastLoad || Date.now(), files: files }, "snapshot"); }).catch(function () { /* storage full or blocked */ });
+    }
+    if (now) return write();
+    snapTimer = setTimeout(write, 800);
+  }
+  async function loadLocal() {
+    var snap = null;
+    try { snap = await idb("readonly", function (st) { return st.get("snapshot"); }); } catch (e) { /* none */ }
+    if (!snap || !Array.isArray(snap.files)) {
+      throw new ApiError(0, "Work mode is on, but this browser has no saved notes yet. Turn Work mode off in Settings once to load them.");
+    }
+    state.files = new Map(snap.files);
+    // the change list is saved at once, the copy a moment later, so lay the changes over it
+    Object.keys(pending).forEach(function (path) {
+      if (pending[path].data === null) state.files.delete(path);
+      else state.files.set(path, { sha: "local-" + path, data: pending[path].data });
+    });
+    state.branch = snap.branch || state.branch;
+    state.empty = !state.files.size;
+    state.loaded = true;
+    state.error = null;
+    state.syncFailed = false;
+    state.lastLoad = snap.savedAt || 0;
+    adoptRecipients();
+    loadAliases();
+  }
+  function markPending(path) {
+    if (pending[path]) return;
+    var cur = state.files.get(path);
+    pending[path] = { base: cur && !/^local-/.test(cur.sha) ? { sha: cur.sha, data: cur.data } : null, data: null };
+  }
+  function localPut(path, obj) {
+    markPending(path);
+    pending[path].data = obj;
+    var sha = "local-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    state.files.set(path, { sha: sha, data: obj });
+    savePending(); saveSnapshot(); excelSoon();
+    return Promise.resolve(sha);
+  }
+  function localDelete(path) {
+    markPending(path);
+    pending[path].data = null;
+    state.files.delete(path);
+    savePending(); saveSnapshot();
+  }
+  async function deleteRemote(path, sha, title) {
+    var body = { message: "Delete " + String(title || "meeting").replace(/\s+/g, " ").trim() + " on the web", sha: sha };
+    if (state.branch) body.branch = state.branch;
+    var res = await api("DELETE", "/contents/" + encodePath(path), body);
+    if (res.status === 409 || res.status === 422) throw new ApiError(409, "changed");
+    if (!res.ok && res.status !== 404) throw new ApiError(res.status, describe(res.status, res, true));
+  }
+  function sameJSON(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
+  /** Combines changes made here (local) with changes made on the phone (remote) since both started from base. */
+  function merge3(base, local, remote) {
+    if (sameJSON(local, base)) return remote;
+    if (sameJSON(remote, base) || sameJSON(local, remote)) return local;
+    function isObj(x) { return !!x && typeof x === "object" && !Array.isArray(x); }
+    function byId(a) { return Array.isArray(a) && a.every(function (x) { return isObj(x) && x.id != null; }); }
+    if (isObj(local) && isObj(remote)) {
+      var b = isObj(base) ? base : {}, out = {};
+      Object.keys(remote).concat(Object.keys(local)).forEach(function (k) {
+        if (Object.prototype.hasOwnProperty.call(out, k)) return;
+        var inL = k in local, inR = k in remote, inB = k in b;
+        if (inL && inR) out[k] = merge3(b[k], local[k], remote[k]);
+        else if (inL) { if (!inB || !sameJSON(local[k], b[k])) out[k] = local[k]; }
+        else if (!inB || !sameJSON(remote[k], b[k])) out[k] = remote[k];
+      });
+      return out;
+    }
+    if (byId(local) && byId(remote) && (base == null || byId(base))) {
+      var bm = {}, lm = {}, seen = {}, list = [];
+      (base || []).forEach(function (x) { bm[x.id] = x; });
+      local.forEach(function (x) { lm[x.id] = x; });
+      remote.forEach(function (r) {
+        seen[r.id] = true;
+        if (lm[r.id]) list.push(merge3(bm[r.id], lm[r.id], r));
+        else if (!bm[r.id] || !sameJSON(r, bm[r.id])) list.push(r); // deleted here, unless the phone changed it since
+      });
+      local.forEach(function (l) { if (!seen[l.id] && !bm[l.id]) list.push(l); }); // added here
+      return list;
+    }
+    return local;
+  }
+  var pushing = false;
+  /** Sends the changes made in Work mode, merged with anything the phone changed meanwhile. */
+  async function pushPending() {
+    if (pushing || workMode()) return;
+    pushing = true;
+    var done = 0, left = 0;
+    try {
+      for (var path of Object.keys(pending)) {
+        var p = pending[path], remote = state.files.get(path), base = p.base;
+        try {
+          if (p.data === null) {
+            if (remote && (!base || remote.sha === base.sha)) { await deleteRemote(path, remote.sha); state.files.delete(path); }
+          } else if (!remote) {
+            if (!base) await putFile(path, p.data, null, "work mode changes"); // new here; skipped if the phone deleted it
+          } else {
+            var merged = base && remote.sha === base.sha ? p.data : merge3(base ? base.data : null, p.data, remote.data);
+            if (!sameJSON(merged, remote.data)) await putFile(path, merged, remote.sha, "work mode changes");
+          }
+          delete pending[path];
+          done++;
+        } catch (e) { left++; }
+      }
+    } finally {
+      pushing = false;
+      await savePending();
+    }
+    if (done) toast("Synced " + plural(done, "change") + " made in Work mode" + (left ? "; " + left + " will try again" : ""));
+    render();
+  }
+  async function setWorkMode(on) {
+    if (on === workMode()) return;
+    if (on) {
+      await load(); // read the latest one last time
+      if (state.syncFailed || state.error) {
+        if (!confirm("Couldn’t get the latest notes from GitHub. Turn on Work mode with the copy saved in this browser?")) { renderSettings(); return; }
+      }
+      await saveSnapshot(true);
+      lsSet(KEY_WORK, "1");
+      toast("Work mode on. Nothing is sent to or read from GitHub.");
+    } else {
+      lsDel(KEY_WORK);
+      state.lastLoad = 0;
+      toast("Work mode off. Syncing…");
+      await load();
+    }
+    renderSidebar(route());
+    if (route().name === "settings") renderSettings();
+  }
+  function workPanel() {
+    var on = workMode(), n = Object.keys(pending).length;
+    var sw = el("input", { type: "checkbox", checked: on, "aria-label": "Work mode" });
+    var label = el("label", { class: "switch" }, sw, el("span", { text: on ? "On" : "Off" }));
+    sw.addEventListener("change", async function () { sw.disabled = true; await setWorkMode(sw.checked); });
+    var status = on
+      ? "Working from the notes saved " + (state.lastLoad ? new Date(state.lastLoad).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "in this browser") + ". " +
+        (n ? plural(n, "change") + " made here will sync when you turn it off." : "Changes you make stay in this browser until you turn it off.")
+      : "When on, this browser doesn’t send anything to GitHub or read from it. Turning it on gets the latest notes one last time; your edits wait here and sync, merged with the phone’s, when you turn it off.";
+    return el("div", { class: "card panel" }, el("h2", { text: "Work mode" }),
+      el("p", { class: "small muted", style: "margin:0 0 12px", text: status }), label);
   }
 
   // ----- Excel file (kept up to date in a file you pick, e.g. in your OneDrive folder) -----
