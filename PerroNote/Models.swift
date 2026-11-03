@@ -43,7 +43,7 @@ struct DiscussionTopic: Codable, Identifiable, Hashable {
 
 /// What one request to Claude used, as reported by Anthropic with the response.
 struct TokenUsage: Codable, Identifiable, Hashable {
-    enum Kind: String, Codable { case draft, redraft, question }
+    enum Kind: String, Codable { case draft, redraft, question, review }
     var id = UUID()
     var kind: Kind
     var model: String
@@ -274,6 +274,8 @@ struct Meeting: Codable, Identifiable, Hashable {
     var tags: [String]?
     /// The notes template picked by hand: a template's name, "" for standard notes, nil to pick by the template rules.
     var noteTemplate: String?
+    /// The help desk call review, when this call was reviewed. Kept on the phone only.
+    var callReview: CallReview?
 
     /// Whether this person was in the meeting: listed, named for a voice, or named by the notes.
     func includes(_ person: String) -> Bool {

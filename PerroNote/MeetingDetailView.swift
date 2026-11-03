@@ -35,6 +35,7 @@ struct MeetingDetailView: View {
     @PaperPitch private var pitch
     @State private var headerHeight: CGFloat = 0
     @State private var viewHeight: CGFloat = 0
+    @State private var showReview = false
 
     private var paper: Bool { appearance == AppAppearance.paper.rawValue }
     /// The rule spacing on paper, and 0 otherwise, which leaves text and rows as they are.
@@ -75,7 +76,12 @@ struct MeetingDetailView: View {
                                 .buttonStyle(.bordered)
                         }
                     }
-                    notesBody(meeting)
+                    reviewPicker(meeting)
+                    if showReview {
+                        CallReviewTab(id: id, player: player)
+                    } else {
+                        notesBody(meeting)
+                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding()
@@ -93,7 +99,7 @@ struct MeetingDetailView: View {
             if paper { PaperBackground() }
         }
         .overlay(alignment: .bottom) {
-            if meeting.notes != nil { bottomBar(meeting) }
+            if meeting.notes != nil && !showReview { bottomBar(meeting) }
         }
         .navigationDestination(isPresented: $showTranscript) { TranscriptScreen(id: id) }
         .overlay {
@@ -205,7 +211,7 @@ struct MeetingDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItemGroup(placement: .navigationBarTrailing) {
-                if meeting.notes != nil {
+                if meeting.notes != nil && !showReview {
                     Button(editing ? "Done" : "Edit") {
                         if editing { store.flush() }
                         editing.toggle()
@@ -256,6 +262,14 @@ struct MeetingDetailView: View {
                         Label("Re-transcribe and find voices", systemImage: "arrow.clockwise")
                     }
                     .disabled(meeting.isBusy)
+                    Button {
+                        editing = false
+                        withAnimation { showReview = true }
+                        if meeting.callReview == nil { Task { await store.reviewCall(id) } }
+                    } label: {
+                        Label(meeting.callReview == nil ? "Review call" : "Call review", systemImage: "checklist")
+                    }
+                    .disabled(meeting.isBusy || (meeting.transcript ?? "").isEmpty)
                     Button { showUsage = true } label: {
                         Label("Token usage", systemImage: "clock")
                     }
@@ -437,7 +451,12 @@ struct MeetingDetailView: View {
                     }
                     .snapToRules(pitch)
                 }
-                notesBody(meeting)
+                reviewPicker(meeting).snapToRules(pitch)
+                if showReview {
+                    CallReviewTab(id: id, player: player)
+                } else {
+                    notesBody(meeting)
+                }
             }
             .padding(.leading, Paper.textX)
             .padding(.trailing, 16)
@@ -597,6 +616,21 @@ struct MeetingDetailView: View {
             LinearGradient(colors: [(paper ? Paper.canary : Color(.systemBackground)).opacity(0),
                                     paper ? Paper.canary : Color(.systemBackground)],
                            startPoint: .top, endPoint: .center))
+    }
+
+    /// Notes or the call review, shown once a call has been or is being reviewed, or carries the review tag.
+    @ViewBuilder
+    private func reviewPicker(_ meeting: Meeting) -> some View {
+        if meeting.callReview != nil || store.reviewing.contains(id) || CallReviewSettings.applies(to: meeting) {
+            Picker("View", selection: Binding(get: { showReview }, set: { v in
+                if v { editing = false }
+                withAnimation { showReview = v }
+            })) {
+                Text("Notes").tag(false)
+                Text("Review").tag(true)
+            }
+            .pickerStyle(.segmented)
+        }
     }
 
     @ViewBuilder
@@ -1165,8 +1199,10 @@ struct UsageBubble: View {
                 let drafts = usage.filter { $0.kind == .draft }
                 let redrafts = usage.filter { $0.kind == .redraft }
                 let questions = usage.filter { $0.kind == .question }
+                let reviews = usage.filter { $0.kind == .review }
                 if !drafts.isEmpty { line("Notes draft", drafts); Divider() }
                 if !redrafts.isEmpty { line(redrafts.count == 1 ? "Redraft" : "Redrafts \u{00B7} \(redrafts.count)", redrafts); Divider() }
+                if !reviews.isEmpty { line(reviews.count == 1 ? "Call review" : "Call reviews \u{00B7} \(reviews.count)", reviews); Divider() }
                 if !questions.isEmpty {
                     line("Ask This Meeting \u{00B7} \(questions.count) question\(questions.count == 1 ? "" : "s")", questions)
                 }
