@@ -316,7 +316,7 @@ final class MeetingStore: ObservableObject {
     /// Adds a recording brought in from Files and starts turning it into notes.
     func addImported(_ file: AudioImport.Imported) {
         let id = add(fileName: file.fileName, duration: file.duration, date: file.date)
-        if !file.title.isEmpty { update(id) { $0.title = file.title } }
+        if !file.title.isEmpty { update(id) { $0.title = file.title; $0.sourceName = file.title } }
         Task { await process(id) }
     }
 
@@ -325,6 +325,28 @@ final class MeetingStore: ObservableObject {
         try? FileManager.default.removeItem(at: Self.audioURL(for: m.audioFile))
         meetings.removeAll { $0.id == id }
         save()
+    }
+
+    /// Meetings whose call review is being drafted right now.
+    @Published private(set) var reviewing: Set<UUID> = []
+    /// Why the last call review failed, by meeting.
+    @Published var reviewErrors: [UUID: String] = [:]
+
+    /// Reviews a help desk call against your process. Runs beside the notes, never instead of them.
+    func reviewCall(_ id: UUID) async {
+        guard let m = meeting(id), !reviewing.contains(id) else { return }
+        reviewing.insert(id)
+        reviewErrors[id] = nil
+        defer { reviewing.remove(id) }
+        do {
+            let result = try await CallReviewer.review(m)
+            update(id) {
+                $0.callReview = result.review
+                $0.usage = ($0.usage ?? []) + [TokenUsage(kind: .review, model: NotesGenerator.model, json: result.usage)]
+            }
+        } catch {
+            reviewErrors[id] = error.localizedDescription
+        }
     }
 
     /// The saved people, used to suggest names for voices.
@@ -427,6 +449,10 @@ final class MeetingStore: ObservableObject {
                 $0.notes = notes
                 $0.notesEdited = nil
                 $0.status = .done
+            }
+            // Calls with the call review tag are reviewed as soon as their notes are ready.
+            if let done = meeting(id), done.callReview == nil, CallReviewSettings.applies(to: done) {
+                Task { await reviewCall(id) }
             }
         } catch {
             update(id) { $0.status = .failed; $0.errorMessage = error.localizedDescription }
