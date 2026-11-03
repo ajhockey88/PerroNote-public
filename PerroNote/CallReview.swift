@@ -299,88 +299,47 @@ enum CallReviewer {
     """
 
     private static func tool(steps: Int, kinds: [String]) -> [String: Any] {
-        [
-            "name": "save_call_review",
-            "description": "Save the finished call review.",
-            "input_schema": [
-                "type": "object",
-                "properties": [
-                    "summary": ["type": "string"],
-                    "outcome": ["type": "string", "enum": ["resolved", "unresolved", "escalated", "unclear"]],
-                    "agent_speaker": ["type": "string"],
-                    "steps": [
-                        "type": "array",
-                        "description": "One entry per checklist step (\(steps) in all), numbered from 1.",
-                        "items": [
-                            "type": "object",
-                            "properties": [
-                                "number": ["type": "integer"],
-                                "result": ["type": "string", "enum": ["pass", "partial", "missed", "not_applicable"]],
-                                "detail": ["type": "string"],
-                                "at": ["type": "integer"],
-                            ],
-                            "required": ["number", "result", "detail"],
-                        ],
-                    ],
-                    "handling": [
-                        "type": "array",
-                        "items": [
-                            "type": "object",
-                            "properties": [
-                                "area": ["type": "string", "enum": ["courtesy", "empathy", "clarity", "patience", "ownership"]],
-                                "score": ["type": "integer"],
-                                "note": ["type": "string"],
-                            ],
-                            "required": ["area", "score", "note"],
-                        ],
-                    ],
-                    "mood": [
-                        "type": "array",
-                        "items": [
-                            "type": "object",
-                            "properties": [
-                                "at": ["type": "integer"],
-                                "agent": ["type": "number"],
-                                "caller": ["type": "number"],
-                            ],
-                            "required": ["at", "agent", "caller"],
-                        ],
-                    ],
-                    "moments": [
-                        "type": "array",
-                        "items": [
-                            "type": "object",
-                            "properties": [
-                                "kind": ["type": "string", "enum": kinds + ["other"]],
-                                "label": ["type": "string"],
-                                "speaker": ["type": "string", "enum": ["agent", "caller"]],
-                                "quote": ["type": "string"],
-                                "note": ["type": "string"],
-                                "at": ["type": "integer"],
-                            ],
-                            "required": ["kind", "label", "speaker", "quote", "note"],
-                        ],
-                    ],
-                    "guidelines": [
-                        "type": "array",
-                        "items": [
-                            "type": "object",
-                            "properties": [
-                                "requirement": ["type": "string"],
-                                "source": ["type": "string"],
-                                "result": ["type": "string", "enum": ["pass", "partial", "missed", "not_applicable"]],
-                                "detail": ["type": "string"],
-                                "at": ["type": "integer"],
-                            ],
-                            "required": ["requirement", "source", "result", "detail"],
-                        ],
-                    ],
-                    "coaching": ["type": "array", "items": ["type": "string"]],
-                    "pain_points": ["type": "array", "items": ["type": "string"]],
-                ],
-                "required": ["summary", "outcome", "steps", "handling", "mood", "moments", "coaching", "pain_points"],
-            ],
-        ]
+        let kindEnum: [String] = kinds + ["other"]
+        let results: [String] = ["pass", "partial", "missed", "not_applicable"]
+        let string: [String: Any] = ["type": "string"]
+        let integer: [String: Any] = ["type": "integer"]
+        let stringList: [String: Any] = ["type": "array", "items": string]
+        func list(_ properties: [String: Any], required: [String], description: String? = nil) -> [String: Any] {
+            var out: [String: Any] = ["type": "array",
+                                      "items": ["type": "object", "properties": properties, "required": required] as [String: Any]]
+            if let description { out["description"] = description }
+            return out
+        }
+        let stepProps: [String: Any] = ["number": integer, "result": ["type": "string", "enum": results] as [String: Any],
+                                        "detail": string, "at": integer]
+        let areaEnum: [String] = ["courtesy", "empathy", "clarity", "patience", "ownership"]
+        let handlingProps: [String: Any] = ["area": ["type": "string", "enum": areaEnum] as [String: Any],
+                                            "score": integer, "note": string]
+        let number: [String: Any] = ["type": "number"]
+        let moodProps: [String: Any] = ["at": integer, "agent": number, "caller": number]
+        let momentProps: [String: Any] = ["kind": ["type": "string", "enum": kindEnum] as [String: Any],
+                                          "label": string,
+                                          "speaker": ["type": "string", "enum": ["agent", "caller"]] as [String: Any],
+                                          "quote": string, "note": string, "at": integer]
+        let guidelineProps: [String: Any] = ["requirement": string, "source": string,
+                                             "result": ["type": "string", "enum": results] as [String: Any],
+                                             "detail": string, "at": integer]
+        let outcomeEnum: [String] = ["resolved", "unresolved", "escalated", "unclear"]
+        var properties: [String: Any] = [:]
+        properties["summary"] = string
+        properties["outcome"] = ["type": "string", "enum": outcomeEnum] as [String: Any]
+        properties["agent_speaker"] = string
+        properties["steps"] = list(stepProps, required: ["number", "result", "detail"],
+                                   description: "One entry per checklist step (\(steps) in all), numbered from 1.")
+        properties["handling"] = list(handlingProps, required: ["area", "score", "note"])
+        properties["mood"] = list(moodProps, required: ["at", "agent", "caller"])
+        properties["moments"] = list(momentProps, required: ["kind", "label", "speaker", "quote", "note"])
+        properties["guidelines"] = list(guidelineProps, required: ["requirement", "source", "result", "detail"])
+        properties["coaching"] = stringList
+        properties["pain_points"] = stringList
+        let required: [String] = ["summary", "outcome", "steps", "handling", "mood", "moments", "coaching", "pain_points"]
+        let schema: [String: Any] = ["type": "object", "properties": properties, "required": required]
+        return ["name": "save_call_review", "description": "Save the finished call review.", "input_schema": schema]
     }
 
     static let areas = ["Courtesy", "Empathy", "Clarity", "Patience", "Ownership"]
