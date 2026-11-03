@@ -221,6 +221,9 @@ struct CallReviewTab: View {
     @EnvironmentObject private var store: MeetingStore
     @State private var playingKey: String?
     @State private var sharing = false
+    @State private var editingInfo = false
+    @State private var agentText = ""
+    @State private var ticketText = ""
 
     var body: some View {
         if let meeting = store.meeting(id) {
@@ -242,6 +245,20 @@ struct CallReviewTab: View {
                 }
             }
             .sheet(isPresented: $sharing) { CallReviewShareView(id: id) }
+            .alert("Agent and ticket", isPresented: $editingInfo) {
+                TextField("Agent name", text: $agentText).textInputAutocapitalization(.words)
+                TextField("Ticket or incident number", text: $ticketText).textInputAutocapitalization(.characters)
+                Button("Save") {
+                    let a = agentText.trimmingCharacters(in: .whitespaces), t = ticketText.trimmingCharacters(in: .whitespaces)
+                    store.update(id) {
+                        $0.callReview?.agentName = a.isEmpty ? nil : a
+                        $0.callReview?.ticket = t.isEmpty ? nil : t
+                    }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Shown at the top of the review and the Word report.")
+            }
         }
     }
 
@@ -275,6 +292,20 @@ struct CallReviewTab: View {
 
     @ViewBuilder
     private func content(_ meeting: Meeting, _ review: CallReview) -> some View {
+        Button {
+            agentText = review.agentName ?? ""
+            ticketText = review.ticket ?? ""
+            editingInfo = true
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "person.text.rectangle")
+                Text(review.callerInfo ?? "Add agent and ticket").lineLimit(1)
+                Image(systemName: "pencil").font(.caption)
+            }
+            .font(.subheadline)
+            .foregroundStyle(review.callerInfo == nil ? Color.secondary : Color.primary)
+        }
+        .buttonStyle(.plain)
         card { ReviewHeadline(review: review) }
 
         Button { sharing = true } label: {
