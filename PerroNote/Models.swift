@@ -276,6 +276,8 @@ struct Meeting: Codable, Identifiable, Hashable {
     var noteTemplate: String?
     /// The help desk call review, when this call was reviewed. Kept on the phone only.
     var callReview: CallReview?
+    /// The name of the audio file this meeting was imported from, without its extension.
+    var sourceName: String?
 
     /// Whether this person was in the meeting: listed, named for a voice, or named by the notes.
     func includes(_ person: String) -> Bool {

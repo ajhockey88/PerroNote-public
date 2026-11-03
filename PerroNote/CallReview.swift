@@ -110,6 +110,15 @@ struct CallReview: Codable, Hashable {
     var date = Date()
     /// Checks against your reference documents. Nil when there were none.
     var guidelines: [GuidelineCheck]? = nil
+    /// The agent and the ticket or incident number, read from the audio file's name or typed in.
+    var agentName: String? = nil
+    var ticket: String? = nil
+
+    /// "Agent: Jane Smith · Ticket: INC0012345", or nil when neither is known.
+    var callerInfo: String? {
+        let parts = [agentName.map { "Agent: \($0)" }, ticket.map { "Ticket: \($0)" }].compactMap { $0 }
+        return parts.isEmpty ? nil : parts.joined(separator: " \u{00B7} ")
+    }
 
     // MARK: Score
 
@@ -353,6 +362,9 @@ enum CallReviewer {
 
         var message = "Call date: \(meeting.date.formatted(date: .complete, time: .shortened))\n"
         message += "Call length: \(formatDuration(meeting.duration))\n"
+        let fromFile = CallFileName.parse(meeting.sourceName ?? "")
+        if let name = fromFile.agent { message += "Help desk agent on this call (from the file name): \(name)\n" }
+        if let ticket = fromFile.ticket { message += "Ticket: \(ticket)\n" }
         if let voices = meeting.voices, voices.count > 1 {
             message += "Speakers: \(voices.map(\.label).joined(separator: ", "))\n"
         }
@@ -471,6 +483,8 @@ enum CallReviewer {
             painPoints: strings("pain_points"),
             agentSpeaker: agent)
         if !documents.isEmpty { review.guidelines = guidelines }
+        review.agentName = fromFile.agent
+        review.ticket = fromFile.ticket
         return GeneratedReview(review: review, usage: json["usage"] as? [String: Any])
     }
 }
@@ -562,4 +576,53 @@ struct CallReviewSettingsView: View {
         case .optional: return .gray
         }
     }
+}
+
+// MARK: - Agent and ticket from the file name
+
+/// Reads the agent's name and the ticket or incident number out of an audio file's name, such as
+/// "Jane Smith - INC0012345", "INC0012345_jane_smith_2026-11-03" or "TASK-4821 John Doe".
+enum CallFileName {
+    private static let filler: Set<String> = [
+        "call", "calls", "recording", "recorded", "audio", "voice", "memo", "ticket", "incident", "inc", "task",
+        "case", "request", "review", "agent", "help", "desk", "helpdesk", "support", "new", "final", "copy",
+        "am", "pm", "and", "with", "the", "for", "of",
+    ]
+
+    static func parse(_ raw: String) -> (agent: String?, ticket: String?) {
+        var text = raw
+        var ticket: String?
+        // A ticket is letters then at least 4 digits (INC0012345, TASK-4821, SR#55120, RITM0045678), or 5 or more digits alone.
+        let patterns = [#"(?i)(?<![A-Z0-9])([A-Z]{2,8})[-#]?(\d{4,})(?![0-9])"#, #"(?<![\d-])#?(\d{5,})(?![\d-])"#]
+        for pattern in patterns {
+            guard ticket == nil, let regex = try? NSRegularExpression(pattern: pattern),
+                  let m = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+                  let whole = Range(m.range, in: text) else { continue }
+            var found = String(text[whole]).trimmingCharacters(in: CharacterSet(charactersIn: "#"))
+            if m.numberOfRanges > 2, let p = Range(m.range(at: 1), in: text), let d = Range(m.range(at: 2), in: text) {
+                let prefix = text[p].uppercased()
+                // Keep the dash or hash the ticket was written with, so it matches the ticketing system.
+                let sep = text[whole].contains("-") ? "-" : ""
+                found = prefix + sep + text[d]
+            }
+            ticket = found
+            text.replaceSubrange(whole, with: " ")
+        }
+        // CamelCase becomes separate words, then separators become spaces.
+        text = text.replacingOccurrences(of: #"([a-z])([A-Z])"#, with: "$1 $2", options: .regularExpression)
+        let words = text.components(separatedBy: CharacterSet(charactersIn: " _-.,;()[]{}+&@#")).filter { w in
+            !w.isEmpty && w.allSatisfy(\.isLetter) && w.count > 1 && !filler.contains(w.lowercased())
+                && !months.contains(w.lowercased())
+        }
+        let name = words.prefix(4).map { w in
+            w == w.lowercased() || w == w.uppercased() ? w.prefix(1).uppercased() + w.dropFirst().lowercased() : w
+        }.joined(separator: " ")
+        return (name.isEmpty ? nil : name, ticket)
+    }
+
+    private static let months: Set<String> = [
+        "jan", "feb", "mar", "apr", "jun", "jul", "aug", "sep", "sept", "oct", "nov", "dec",
+        "january", "february", "march", "april", "june", "july", "august", "september", "october", "november", "december",
+        "mon", "tue", "wed", "thu", "fri", "sat", "sun", "monday", "tuesday", "wednesday", "thursday", "friday",
+    ]
 }

@@ -23,7 +23,10 @@ enum CallReviewDocx {
     }
 
     static func fileName(for meeting: Meeting) -> String {
-        exportFileName("Call review - " + meeting.title, fallback: "Call review", ext: "docx")
+        let r = meeting.callReview
+        let parts = ["Call review", r?.ticket, r?.agentName].compactMap { $0 }
+        let name = parts.count > 1 ? parts.joined(separator: " - ") : "Call review - " + meeting.title
+        return exportFileName(name, fallback: "Call review", ext: "docx")
     }
 
     private struct Picture {
@@ -51,6 +54,12 @@ enum CallReviewDocx {
         var body = D.para("Title", "Call review: \(meeting.title)")
         let when = meeting.date.formatted(date: .complete, time: .shortened)
         body += D.para("Subtitle", "\(when)  |  \(formatDuration(meeting.duration))  |  Process: \(review.processName)")
+        if review.agentName != nil || review.ticket != nil {
+            var line = "<w:p><w:pPr><w:spacing w:after=\"160\"/></w:pPr>"
+            if let agent = review.agentName { line += D.run("Agent: ", "<w:b/>") + D.run(agent + "    ") }
+            if let ticket = review.ticket { line += D.run("Ticket: ", "<w:b/>") + D.run(ticket) }
+            body += line + "</w:p>"
+        }
 
         func image(_ p: Picture?) {
             guard let p else { return }
@@ -217,7 +226,8 @@ enum CallReviewDocx {
 /// The email that carries the Word report.
 enum CallReviewExport {
     static func subject(_ meeting: Meeting, _ review: CallReview) -> String {
-        "Call review: \(meeting.title) (\(review.score), \(review.verdict.lowercased()))"
+        let who = [review.ticket, review.agentName].compactMap { $0 }.joined(separator: " \u{00B7} ")
+        return "Call review: \(who.isEmpty ? meeting.title : who) (\(review.score), \(review.verdict.lowercased()))"
     }
 
     private static func esc(_ s: String) -> String {
@@ -225,7 +235,9 @@ enum CallReviewExport {
     }
 
     static func plain(_ meeting: Meeting, _ review: CallReview) -> String {
-        var out = "Call review: \(meeting.title)\n\(meeting.date.formatted(date: .long, time: .shortened)) \u{00B7} \(formatDuration(meeting.duration))\n\n"
+        var out = "Call review: \(meeting.title)\n\(meeting.date.formatted(date: .long, time: .shortened)) \u{00B7} \(formatDuration(meeting.duration))\n"
+        if let info = review.callerInfo { out += info + "\n" }
+        out += "\n"
         out += "Score: \(review.score) of 100 (\(review.verdict))\nOutcome: \(review.outcome.title)\n"
         out += "Steps missed: \(review.missedSteps.count)\nFlagged moments: \(review.flags.count)\n\n"
         if !review.summary.isEmpty { out += review.summary + "\n\n" }
@@ -252,6 +264,7 @@ enum CallReviewExport {
         var h = "<div style=\"font-family:Calibri,Arial,sans-serif;font-size:14px;color:#201F1E\">"
         h += "<h2 style=\"margin:0 0 4px\">Call review: \(esc(meeting.title))</h2>"
         h += "<div style=\"color:#605E5C;font-size:12px;margin-bottom:12px\">\(esc(meeting.date.formatted(date: .long, time: .shortened))) \u{00B7} \(formatDuration(meeting.duration)) \u{00B7} \(esc(review.processName))</div>"
+        if let info = review.callerInfo { h += "<p style=\"margin:0 0 10px\">\(esc(info))</p>" }
         h += "<p style=\"font-size:18px;margin:0 0 6px\"><b style=\"color:\(color)\">\(review.score) of 100</b> \u{00B7} \(esc(review.verdict))</p>"
         h += "<p style=\"margin:0 0 12px\">Outcome: <b>\(review.outcome.title)</b> \u{00B7} Steps missed: <b>\(review.missedSteps.count)</b> \u{00B7} Flagged moments: <b>\(review.flags.count)</b></p>"
         if !review.summary.isEmpty { h += "<p>\(esc(review.summary))</p>" }

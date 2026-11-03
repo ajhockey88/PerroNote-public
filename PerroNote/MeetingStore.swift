@@ -316,7 +316,7 @@ final class MeetingStore: ObservableObject {
     /// Adds a recording brought in from Files and starts turning it into notes.
     func addImported(_ file: AudioImport.Imported) {
         let id = add(fileName: file.fileName, duration: file.duration, date: file.date)
-        if !file.title.isEmpty { update(id) { $0.title = file.title } }
+        if !file.title.isEmpty { update(id) { $0.title = file.title; $0.sourceName = file.title } }
         Task { await process(id) }
     }
 
