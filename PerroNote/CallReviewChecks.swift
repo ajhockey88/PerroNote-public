@@ -197,7 +197,7 @@ private struct HoldBar: View {
         let h = hold
         VStack(spacing: 3) {
             Canvas { ctx, size in
-                let pad = 8.0, w = size.width - 2 * pad, mid = 10.0
+                let pad: Double = 8, w = Double(size.width) - 2 * pad, mid: Double = 10
                 let len = max(h.length, 1)
                 func x(_ seconds: Double) -> Double { pad + w * min(max(seconds, 0), len) / len }
                 ctx.fill(Path(roundedRect: CGRect(x: pad, y: mid - 5, width: w, height: 10), cornerRadius: 5), with: .color(ReviewColors.hold))
@@ -269,7 +269,7 @@ struct InterruptionsCard: View {
                 Spacer()
             }
             Canvas { ctx, size in
-                let w = size.width, h = size.height, d = max(stats.duration, 1), pad = 6.0
+                let w = Double(size.width), h = Double(size.height), d = max(stats.duration, 1), pad: Double = 6
                 func x(_ t: Double) -> Double { pad + (w - 2 * pad) * t / d }
                 ctx.fill(Path(roundedRect: CGRect(origin: .zero, size: size), cornerRadius: 6), with: .color(Color.gray.opacity(0.08)))
                 var line = Path()
