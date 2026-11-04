@@ -115,6 +115,14 @@ struct CallReview: Codable, Hashable {
     var ticket: String? = nil
     /// Why each long silence happened. Nil for reviews made before dead air was measured.
     var deadAir: [DeadAirNote]? = nil
+    /// Each time the caller was asked to wait. Nil for older reviews.
+    var holds: [HoldCheck]? = nil
+    /// One line on the pattern of interruptions, when there were any.
+    var interruptionNote: String? = nil
+    /// Whether the issue was fixed on this call, and when each stage was reached.
+    var resolution: Resolution? = nil
+    /// Jargon the agent used, and how plain the call was for the caller.
+    var plainLanguage: PlainLanguage? = nil
 
     /// "Agent: Jane Smith · Ticket: INC0012345", or nil when neither is known.
     var callerInfo: String? {
@@ -315,6 +323,29 @@ enum CallReviewer {
     doing something they were asked to do (restarting, finding a code), otherwise "unexplained". reason is \
     one short line on what was happening and, when unexplained, what the agent could have said. quote is \
     the words just before or after that explain it, if any. Leave dead_air empty when none are listed.
+    - Holds: one holds entry each time the agent put the caller on hold or had them wait while the agent \
+    worked (for example "give me a moment while I check", or a long quiet stretch while the agent works). \
+    start is the second the wait began, end the second the agent came back with an update or result. asked \
+    is true when the agent asked or told the caller before going quiet. checked_in is the second the agent \
+    first spoke to the caller during the wait (for example "still working on it, thanks for your \
+    patience"); leave it out if they did not. thanked is true when the agent thanked the caller for waiting \
+    on coming back. suggestion is one better line to say when asked or thanked was missed, otherwise empty. \
+    Leave holds empty when there were none.
+    - Interruptions: when the message lists cut-ins, interruption_note is one sentence on the pattern (who \
+    cut in, roughly when, about what) and whether it hurt the call. Leave it empty when none are listed or \
+    they were harmless.
+    - Resolution: result is "fixed" when the issue was fixed during this call, "callback" when someone must \
+    call back or follow up, "escalated" when it was handed to another team or tier, otherwise "not_fixed". \
+    detail is one short line on how it ended. issue_clear, cause_found, fix_applied and confirmed are the \
+    seconds when the agent understood the issue, found the cause, applied the fix and confirmed with the \
+    caller that it works; leave out any that did not happen. repeat_contact is true when the caller said \
+    they had already called or written about this.
+    - Plain language: terms lists the technical words and acronyms the agent said to the caller that a \
+    non-technical person might not know, with how many times each was said and whether the agent explained \
+    it in plain words; up to 8, most used first, none if the agent spoke plainly. score is 1 (full of \
+    unexplained jargon) to 5 (plain throughout). For the worst jargon moment give at, said (the agent's \
+    exact words), better (a plain rewrite) and reaction (the caller's reply if it showed confusion); leave \
+    these out when there was no jargon.
     - Pain points: what made this harder for the caller (repeat contacts, long waits, confusing steps, \
     broken tools). Empty if none came up.
     """
@@ -348,6 +379,16 @@ enum CallReviewer {
         let deadAirProps: [String: Any] = ["at": integer,
                                            "kind": ["type": "string", "enum": ["hold", "caller", "unexplained"]] as [String: Any],
                                            "reason": string, "quote": string]
+        let boolean: [String: Any] = ["type": "boolean"]
+        let holdProps: [String: Any] = ["start": integer, "end": integer, "asked": boolean, "checked_in": integer,
+                                        "thanked": boolean, "suggestion": string]
+        let resolutionProps: [String: Any] = [
+            "result": ["type": "string", "enum": ["fixed", "callback", "escalated", "not_fixed"]] as [String: Any],
+            "detail": string, "issue_clear": integer, "cause_found": integer, "fix_applied": integer, "confirmed": integer,
+            "repeat_contact": boolean]
+        let termProps: [String: Any] = ["term": string, "count": integer, "explained": boolean]
+        let plainProps: [String: Any] = ["score": integer, "terms": list(termProps, required: ["term", "count", "explained"]),
+                                         "at": integer, "said": string, "better": string, "reaction": string]
         let outcomeEnum: [String] = ["resolved", "unresolved", "escalated", "unclear"]
         var properties: [String: Any] = [:]
         properties["summary"] = string
@@ -360,9 +401,15 @@ enum CallReviewer {
         properties["moments"] = list(momentProps, required: ["kind", "label", "speaker", "quote", "note"])
         properties["guidelines"] = list(guidelineProps, required: ["requirement", "source", "result", "detail"])
         properties["dead_air"] = list(deadAirProps, required: ["at", "kind", "reason"])
+        properties["holds"] = list(holdProps, required: ["start", "end", "asked", "thanked"])
+        properties["interruption_note"] = string
+        properties["resolution"] = ["type": "object", "properties": resolutionProps,
+                                    "required": ["result", "detail", "repeat_contact"]] as [String: Any]
+        properties["plain_language"] = ["type": "object", "properties": plainProps, "required": ["score", "terms"]] as [String: Any]
         properties["coaching"] = stringList
         properties["pain_points"] = stringList
-        let required: [String] = ["summary", "outcome", "steps", "handling", "mood", "moments", "coaching", "pain_points"]
+        let required: [String] = ["summary", "outcome", "steps", "handling", "mood", "moments", "holds", "resolution",
+                                  "plain_language", "coaching", "pain_points"]
         let schema: [String: Any] = ["type": "object", "properties": properties, "required": required]
         return ["name": "save_call_review", "description": "Save the finished call review.", "input_schema": schema]
     }
@@ -397,6 +444,13 @@ enum CallReviewer {
         if !silences.isEmpty {
             let list = silences.map { "[\(Int($0.start))] \(Int($0.length.rounded())) seconds" }.joined(separator: "\n")
             message += "\nLong silences measured from the audio (start second, length). Add a dead_air entry for each:\n\(list)\n"
+        }
+        if meeting.hasVoices {
+            let cuts = CallTalkStats.cutIns(turns: meeting.lines ?? [], agent: nil)
+            if !cuts.isEmpty {
+                let list = cuts.map { "[\(Int($0.at))] \(meeting.label(for: $0.speaker)) cut in" }.joined(separator: "\n")
+                message += "\nCut-ins measured from the audio (someone started while the other was mid-sentence):\n\(list)\n"
+            }
         }
         message += "\nTranscript:\n\(text)"
         let content: [[String: Any]] = documents + [["type": "text", "text": message]]
@@ -504,6 +558,36 @@ enum CallReviewer {
             painPoints: strings("pain_points"),
             agentSpeaker: agent)
         if !documents.isEmpty { review.guidelines = guidelines }
+        func bool(_ v: Any?) -> Bool { (v as? Bool) ?? false }
+        review.holds = (input["holds"] as? [[String: Any]] ?? []).compactMap { raw in
+            guard let start = number(raw["start"]), let end = number(raw["end"]) else { return nil }
+            let s = clean(raw["suggestion"])
+            return CallReview.HoldCheck(start: max(0, start), end: max(start, end), asked: bool(raw["asked"]),
+                                        checkedIn: number(raw["checked_in"]), thanked: bool(raw["thanked"]),
+                                        suggestion: s.isEmpty ? nil : s)
+        }.sorted { $0.start < $1.start }
+        let note = clean(input["interruption_note"])
+        review.interruptionNote = note.isEmpty ? nil : note
+        if let raw = input["resolution"] as? [String: Any] {
+            review.resolution = CallReview.Resolution(
+                result: CallReview.Resolution.Result(rawValue: (raw["result"] as? String) ?? "") ?? .notFixed,
+                detail: clean(raw["detail"]),
+                issueClear: number(raw["issue_clear"]), causeFound: number(raw["cause_found"]),
+                fixApplied: number(raw["fix_applied"]), confirmed: number(raw["confirmed"]),
+                repeatContact: bool(raw["repeat_contact"]))
+        }
+        if let raw = input["plain_language"] as? [String: Any] {
+            let terms: [CallReview.PlainLanguage.Term] = (raw["terms"] as? [[String: Any]] ?? []).compactMap { t in
+                let term = clean(t["term"])
+                guard !term.isEmpty else { return nil }
+                return CallReview.PlainLanguage.Term(term: term, count: max(1, Int(number(t["count"]) ?? 1)), explained: bool(t["explained"]))
+            }
+            let said = clean(raw["said"]), better = clean(raw["better"]), reaction = clean(raw["reaction"])
+            review.plainLanguage = CallReview.PlainLanguage(
+                score: min(max(Int(number(raw["score"]) ?? 5), 1), 5), terms: terms, at: number(raw["at"]),
+                said: said.isEmpty ? nil : said, better: better.isEmpty ? nil : better,
+                reaction: reaction.isEmpty ? nil : reaction)
+        }
         review.deadAir = (input["dead_air"] as? [[String: Any]] ?? []).compactMap { raw in
             guard let at = number(raw["at"]) else { return nil }
             let quote = clean(raw["quote"])

@@ -55,8 +55,18 @@ struct CallTalkStats {
         }
     }
 
+    /// One person starting to talk while the other was still mid-sentence.
+    struct CutIn: Identifiable {
+        var at: Double
+        /// The voice id of whoever cut in.
+        var speaker: String
+        var byAgent: Bool
+        var id: Double { at }
+    }
+
     var duration: Double
     var speech: [Speech]
+    var cutIns: [CutIn] = []
     var deadAir: [DeadAir]
     var threshold: Double
     /// True when the agent's voice is known, so talk time splits into agent and caller.
@@ -130,8 +140,27 @@ struct CallTalkStats {
         }
 
         let duration = max(meeting.duration, lastEnd ?? 0)
-        return CallTalkStats(duration: duration, speech: speech, deadAir: gaps, threshold: threshold,
-                             split: split, agentTalk: agentTalk, callerTalk: callerTalk)
+        var stats = CallTalkStats(duration: duration, speech: speech, deadAir: gaps, threshold: threshold,
+                                  split: split, agentTalk: agentTalk, callerTalk: callerTalk)
+        stats.cutIns = cutIns(turns: turns, agent: agent)
+        return stats
+    }
+
+    /// A new voice that starts within half a second of someone whose sentence was not finished.
+    /// Short replies like "okay" or "mm-hm" are listening, not cutting in, so they are left out.
+    static func cutIns(turns: [TranscriptLine], agent: String?) -> [CutIn] {
+        let sorted = turns.filter { !$0.text.trimmingCharacters(in: .whitespaces).isEmpty }.sorted { $0.start < $1.start }
+        guard sorted.count > 1 else { return [] }
+        var out: [CutIn] = []
+        for i in 1..<sorted.count {
+            let prev = sorted[i - 1], cur = sorted[i]
+            guard let a = prev.speaker, let b = cur.speaker, a != b, cur.start - prev.end < 0.5 else { continue }
+            let last = prev.text.trimmingCharacters(in: .whitespaces).last
+            if let last, ".?!\u{2026}".contains(last) { continue }
+            if cur.text.split(separator: " ").count <= 2 { continue }
+            out.append(CutIn(at: cur.start, speaker: b, byAgent: b == agent))
+        }
+        return out
     }
 }
 

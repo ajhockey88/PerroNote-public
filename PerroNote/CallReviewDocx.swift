@@ -5,7 +5,7 @@ import UIKit
 /// charts drawn on the phone and placed in the file as pictures.
 enum CallReviewDocx {
     enum Section: String, CaseIterable, Hashable {
-        case scorecard, summary, checklist, guidelines, handling, deadAir, mood, moments, coaching, transcript
+        case scorecard, summary, resolution, checklist, guidelines, handling, deadAir, holds, interruptions, plainLanguage, mood, moments, coaching, transcript
 
         var title: String {
             switch self {
@@ -14,7 +14,11 @@ enum CallReviewDocx {
             case .checklist: return "Process checklist"
             case .guidelines: return "Reference document checks"
             case .handling: return "Call handling"
+            case .resolution: return "First contact resolution"
             case .deadAir: return "Talk time and dead air"
+            case .holds: return "Hold etiquette"
+            case .interruptions: return "Interruptions"
+            case .plainLanguage: return "Plain language"
             case .mood: return "Mood chart"
             case .moments: return "Flagged moments"
             case .coaching: return "Coaching and pain points"
@@ -74,6 +78,10 @@ enum CallReviewDocx {
         if sections.contains(.summary), !review.summary.isEmpty {
             body += D.para("Heading1", "Summary") + "<w:p>\(D.run(review.summary))</w:p>"
         }
+        if sections.contains(.resolution), let r = review.resolution {
+            body += D.para("Heading1", "First contact resolution")
+            image(picture(ResolutionCard(resolution: r), width: 640))
+        }
         if sections.contains(.checklist), !review.steps.isEmpty {
             body += D.para("Heading1", "Process checklist")
             body += table(widths: [2900, 1100, 900, 4460], header: ["Step", "Result", "Time", "Detail"],
@@ -111,6 +119,18 @@ enum CallReviewDocx {
             } else {
                 body += "<w:p>\(D.run("No silences of \(Int(stats.threshold)) seconds or more."))</w:p>"
             }
+        }
+        if sections.contains(.holds), let holds = review.holds, !holds.isEmpty {
+            body += D.para("Heading1", "Hold etiquette")
+            image(picture(HoldEtiquetteCard(holds: holds), width: 640))
+        }
+        if sections.contains(.interruptions), let stats = CallTalkStats.measure(meeting, review: review), stats.split {
+            body += D.para("Heading1", "Interruptions")
+            image(picture(InterruptionsCard(stats: stats, note: review.interruptionNote), width: 640))
+        }
+        if sections.contains(.plainLanguage), let plain = review.plainLanguage {
+            body += D.para("Heading1", "Plain language")
+            image(picture(PlainLanguageCard(plain: plain), width: 640))
         }
         if sections.contains(.mood), review.mood.count > 1 {
             body += D.para("Heading1", "Mood over the call")

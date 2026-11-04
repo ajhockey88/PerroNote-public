@@ -314,6 +314,11 @@ struct CallReviewTab: View {
         }
         .buttonStyle(.bordered)
 
+        if let r = review.resolution {
+            header("First contact resolution")
+            card { ResolutionCard(resolution: r) }
+        }
+
         header("Process \u{00B7} \(review.processName)")
         card {
             VStack(alignment: .leading, spacing: 0) {
@@ -399,6 +404,21 @@ struct CallReviewTab: View {
             }
         }
 
+        if let holds = review.holds, !holds.isEmpty {
+            header("Hold etiquette \u{00B7} \(holds.count) hold\(holds.count == 1 ? "" : "s")")
+            card { HoldEtiquetteCard(holds: holds, play: play(meeting)) }
+        }
+
+        if let stats = CallTalkStats.measure(meeting, review: review), stats.split {
+            header("Interruptions \u{00B7} \(stats.cutIns.count)")
+            card { InterruptionsCard(stats: stats, note: review.interruptionNote) }
+        }
+
+        if let plain = review.plainLanguage {
+            header("Plain language \u{00B7} \(plain.terms.count) jargon term\(plain.terms.count == 1 ? "" : "s")")
+            card { PlainLanguageCard(plain: plain, play: play(meeting)) }
+        }
+
         if review.mood.count > 1 {
             header("Mood over the call")
             card { MoodChart(review: review, duration: meeting.duration) }
@@ -475,6 +495,15 @@ struct CallReviewTab: View {
             .frame(width: 20, height: 20)
             .background(ReviewColors.step(r), in: Circle())
             .padding(.top, 1)
+    }
+
+    /// Plays the recording from a second, for the cards that carry their own Play links.
+    private func play(_ meeting: Meeting) -> ((Double) -> Void)? {
+        guard !meeting.audioFile.isEmpty else { return nil }
+        return { at in
+            playingKey = nil
+            player.play(url: MeetingStore.audioURL(for: meeting.audioFile), from: max(0, at - 1))
+        }
     }
 
     @ViewBuilder
