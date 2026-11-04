@@ -113,6 +113,8 @@ struct CallReview: Codable, Hashable {
     /// The agent and the ticket or incident number, read from the audio file's name or typed in.
     var agentName: String? = nil
     var ticket: String? = nil
+    /// Why each long silence happened. Nil for reviews made before dead air was measured.
+    var deadAir: [DeadAirNote]? = nil
 
     /// "Agent: Jane Smith · Ticket: INC0012345", or nil when neither is known.
     var callerInfo: String? {
@@ -232,6 +234,10 @@ struct CallReviewSettingsData: Codable, Hashable {
     var watch: [WatchFor] = WatchFor.allCases
     /// Extra guidance for the reviewer, in your own words.
     var notes = ""
+    /// Silences at least this long count as dead air. Nil means the default, 10 seconds.
+    var deadAirSeconds: Int? = nil
+
+    var deadAirLimit: Int { deadAirSeconds ?? 10 }
 }
 
 enum CallReviewSettings {
@@ -303,6 +309,12 @@ enum CallReviewer {
     - Summary: 2 to 4 sentences: what the call was about, how it ended, and the main things to coach.
     - Coaching: 2 to 5 short, concrete points for the agent, starting with the most important. End with \
     one thing to keep doing when there is one, starting "Keep doing:".
+    - Dead air: when the message lists long silences measured from the audio, add one dead_air entry for \
+    each, with "at" equal to the start second given. kind is "hold" when the agent told the caller they \
+    would be waiting (for example "give me a moment while I check"), "caller" when the caller was busy \
+    doing something they were asked to do (restarting, finding a code), otherwise "unexplained". reason is \
+    one short line on what was happening and, when unexplained, what the agent could have said. quote is \
+    the words just before or after that explain it, if any. Leave dead_air empty when none are listed.
     - Pain points: what made this harder for the caller (repeat contacts, long waits, confusing steps, \
     broken tools). Empty if none came up.
     """
@@ -333,6 +345,9 @@ enum CallReviewer {
         let guidelineProps: [String: Any] = ["requirement": string, "source": string,
                                              "result": ["type": "string", "enum": results] as [String: Any],
                                              "detail": string, "at": integer]
+        let deadAirProps: [String: Any] = ["at": integer,
+                                           "kind": ["type": "string", "enum": ["hold", "caller", "unexplained"]] as [String: Any],
+                                           "reason": string, "quote": string]
         let outcomeEnum: [String] = ["resolved", "unresolved", "escalated", "unclear"]
         var properties: [String: Any] = [:]
         properties["summary"] = string
@@ -344,6 +359,7 @@ enum CallReviewer {
         properties["mood"] = list(moodProps, required: ["at", "agent", "caller"])
         properties["moments"] = list(momentProps, required: ["kind", "label", "speaker", "quote", "note"])
         properties["guidelines"] = list(guidelineProps, required: ["requirement", "source", "result", "detail"])
+        properties["dead_air"] = list(deadAirProps, required: ["at", "kind", "reason"])
         properties["coaching"] = stringList
         properties["pain_points"] = stringList
         let required: [String] = ["summary", "outcome", "steps", "handling", "mood", "moments", "coaching", "pain_points"]
@@ -376,6 +392,11 @@ enum CallReviewer {
         let documents = ReferenceDocs.contentBlocks()
         if !documents.isEmpty {
             message += "\nThe team's reference documents are attached above (\(documents.count)). Review the call against them and fill in guidelines.\n"
+        }
+        let silences = CallTalkStats.measure(meeting, threshold: CallTalkStats.limit(settings))?.deadAir ?? []
+        if !silences.isEmpty {
+            let list = silences.map { "[\(Int($0.start))] \(Int($0.length.rounded())) seconds" }.joined(separator: "\n")
+            message += "\nLong silences measured from the audio (start second, length). Add a dead_air entry for each:\n\(list)\n"
         }
         message += "\nTranscript:\n\(text)"
         let content: [[String: Any]] = documents + [["type": "text", "text": message]]
@@ -483,6 +504,13 @@ enum CallReviewer {
             painPoints: strings("pain_points"),
             agentSpeaker: agent)
         if !documents.isEmpty { review.guidelines = guidelines }
+        review.deadAir = (input["dead_air"] as? [[String: Any]] ?? []).compactMap { raw in
+            guard let at = number(raw["at"]) else { return nil }
+            let quote = clean(raw["quote"])
+            return CallReview.DeadAirNote(
+                at: at, kind: CallReview.DeadAirNote.Kind(rawValue: (raw["kind"] as? String) ?? "") ?? .unexplained,
+                reason: clean(raw["reason"]), quote: quote.isEmpty ? nil : quote)
+        }
         review.agentName = fromFile.agent
         review.ticket = fromFile.ticket
         return GeneratedReview(review: review, usage: json["usage"] as? [String: Any])
@@ -546,6 +574,16 @@ struct CallReviewSettingsView: View {
                             if on { if !s.watch.contains(w) { s.watch.append(w) } } else { s.watch.removeAll { $0 == w } }
                         }))
                 }
+            }
+
+            Section {
+                Stepper(value: Binding(get: { s.deadAirLimit }, set: { s.deadAirSeconds = $0 }), in: 5...60, step: 5) {
+                    LabeledContent("Dead air after", value: "\(s.deadAirLimit) seconds")
+                }
+            } header: {
+                Text("Talk time and dead air")
+            } footer: {
+                Text("Silences this long or longer are marked on the talk time chart, and the review says whether the caller was told.")
             }
 
             Section {

@@ -5,7 +5,7 @@ import UIKit
 /// charts drawn on the phone and placed in the file as pictures.
 enum CallReviewDocx {
     enum Section: String, CaseIterable, Hashable {
-        case scorecard, summary, checklist, guidelines, handling, mood, moments, coaching, transcript
+        case scorecard, summary, checklist, guidelines, handling, deadAir, mood, moments, coaching, transcript
 
         var title: String {
             switch self {
@@ -14,6 +14,7 @@ enum CallReviewDocx {
             case .checklist: return "Process checklist"
             case .guidelines: return "Reference document checks"
             case .handling: return "Call handling"
+            case .deadAir: return "Talk time and dead air"
             case .mood: return "Mood chart"
             case .moments: return "Flagged moments"
             case .coaching: return "Coaching and pain points"
@@ -95,6 +96,21 @@ enum CallReviewDocx {
             image(picture(HandlingBars(review: review, big: true), width: 640))
             body += table(widths: [1800, 900, 6660], header: ["Area", "Score", "Note"],
                           rows: review.handling.map { [Cell($0.area), Cell("\($0.score) of 5", bold: true), Cell($0.note)] })
+        }
+        if sections.contains(.deadAir), let stats = CallTalkStats.measure(meeting, review: review) {
+            body += D.para("Heading1", "Talk time and dead air")
+            image(picture(TalkTimeChart(stats: stats, big: true), width: 640))
+            if !stats.deadAir.isEmpty {
+                body += table(widths: [800, 2000, 900, 5660], header: ["Time", "Type", "Length", "Why"],
+                              rows: stats.ordered.map { g in
+                                  var why = g.note?.reason ?? "Not reviewed yet. Review the call again to fill this in."
+                                  if let quote = g.note?.quote { why += " \u{201C}\(quote)\u{201D}" }
+                                  return [Cell(formatDuration(g.start)), Cell(g.title, fill: g.explained ? "E7EFFF" : "FDE8E0", bold: true),
+                                          Cell("\(Int(g.length.rounded()))s"), Cell(why)]
+                              })
+            } else {
+                body += "<w:p>\(D.run("No silences of \(Int(stats.threshold)) seconds or more."))</w:p>"
+            }
         }
         if sections.contains(.mood), review.mood.count > 1 {
             body += D.para("Heading1", "Mood over the call")

@@ -22,7 +22,7 @@ targets:
       properties:
         CFBundleDisplayName: PerroNote
         CFBundleShortVersionString: "1.7"
-        CFBundleVersion: "31"
+        CFBundleVersion: "32"
         UILaunchScreen: {}
         UIBackgroundModes:
           - audio
@@ -60,7 +60,7 @@ targets:
       properties:
         CFBundleDisplayName: PerroNote Recording
         CFBundleShortVersionString: "1.7"
-        CFBundleVersion: "31"
+        CFBundleVersion: "32"
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
         UIAppFonts:

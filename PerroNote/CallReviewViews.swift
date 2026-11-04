@@ -364,6 +364,41 @@ struct CallReviewTab: View {
             card { HandlingBars(review: review) }
         }
 
+        if let stats = CallTalkStats.measure(meeting, review: review) {
+            header("Talk time and dead air")
+            card { TalkTimeChart(stats: stats) }
+            if !stats.deadAir.isEmpty {
+                header("Dead air \u{00B7} \(stats.deadAir.count) moment\(stats.deadAir.count == 1 ? "" : "s")")
+                card {
+                    VStack(alignment: .leading, spacing: 0) {
+                        ForEach(Array(stats.ordered.enumerated()), id: \.element.id) { i, g in
+                            if i > 0 { Divider().padding(.vertical, 9) }
+                            HStack(alignment: .top, spacing: 10) {
+                                Text(formatDuration(g.start)).font(.footnote.weight(.semibold).monospacedDigit())
+                                    .foregroundStyle(Color.accentColor).frame(width: 40, alignment: .leading).padding(.top, 2)
+                                VStack(alignment: .leading, spacing: 5) {
+                                    HStack(spacing: 6) {
+                                        ReviewPill(text: g.title, color: ReviewColors.deadAir(g))
+                                        Text("\(Int(g.length.rounded()))s").font(.footnote.weight(.semibold)).foregroundStyle(.secondary)
+                                    }
+                                    if let note = g.note {
+                                        if !note.reason.isEmpty { Text(note.reason).font(.footnote) }
+                                        if let quote = note.quote {
+                                            Text("\u{201C}\(quote)\u{201D}").font(.footnote).foregroundStyle(.secondary)
+                                        }
+                                    } else {
+                                        Text("Tap Review again to see why it went quiet.").font(.footnote).foregroundStyle(.secondary)
+                                    }
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                playButton(meeting, at: g.start, key: "d:\(g.start)", label: true)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         if review.mood.count > 1 {
             header("Mood over the call")
             card { MoodChart(review: review, duration: meeting.duration) }
